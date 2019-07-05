@@ -388,16 +388,19 @@ class BannedLettersGame(ClassicGame):
     async def running_initialization(self) -> None:
         alphabets = list(ascii_lowercase)
         for i in range(randint(2, 4)):
-            self.banned_letters.append(sample(alphabets, 1)[0])
+            self.banned_letters.append(choice(alphabets))
             if self.banned_letters[-1] in "aeiou":
                 alphabets = [c for c in alphabets if c not in "aeiou"]
             else:
                 alphabets.remove(self.banned_letters[-1])
         self.banned_letters.sort()
         unbanned = "".join([c for c in ascii_lowercase if c not in self.banned_letters])
+        n = 1
         self.current_word = sample(self.unused_words[choice(unbanned)], 1)[0]
         while any([c in self.current_word for c in self.banned_letters]):
-            self.current_word = sample(self.unused_words[choice(ascii_lowercase)], 1)[0]
+            self.current_word = sample(self.unused_words[choice(unbanned)], 1)[0]
+            n += 1
+        print(f"Tried {n} time(s) to find a word without letters {', '.join(self.banned_letters)}.")
         self.used_words.add(self.current_word)
         await self.send_message(f"Time limit: *{self.time_limit}s*\n"
                                 f"Minimum letters per word: *{self.min_letters_limit}*\n"

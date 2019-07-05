@@ -8,9 +8,9 @@ with open("token.txt") as f:
     TOKEN = f.read().strip()
 bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN)
 dp = Dispatcher(bot)
+BOT_ID = int(TOKEN.partition(":")[0])
 OWNER_ID = 463998526
 ADMIN_GROUP_ID = -1001141544515
-BOT_ID = int(TOKEN.partition(":")[0])
 MAX_PLAYERS = 30
 GAMES = {}
 
