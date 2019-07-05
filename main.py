@@ -7,7 +7,7 @@ from aiogram import executor, types
 from aiogram.utils.exceptions import TelegramAPIError
 
 from constants import bot, dp, BOT_ID, ADMIN_GROUP_ID, GAMES, WORDS, GameState
-from game import ClassicGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame
+from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame
 
 seed(time())
 logging.basicConfig(level=logging.INFO)
@@ -97,6 +97,26 @@ async def cmd_startclassic(message: types.Message) -> None:
         await GAMES[group_id].join(message)
         return
     game = ClassicGame(message.chat.id)
+    GAMES[group_id] = game
+    await game.main_loop(message)
+
+
+@dp.message_handler(commands=["starthard"])
+async def cmd_starthard(message: types.Message) -> None:
+    if message.chat.id > 0:
+        await games_group_only(message)
+        return
+    rmsg = message.reply_to_message
+    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
+        return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+    group_id = message.chat.id
+    if group_id in GAMES:
+        await GAMES[group_id].join(message)
+        return
+    game = HardModeGame(message.chat.id)
     GAMES[group_id] = game
     await game.main_loop(message)
 
@@ -235,7 +255,9 @@ async def cmd_maintmode(message: types.Message) -> None:
 async def message_handler(message: types.Message) -> None:
     group_id = message.chat.id
     if (group_id in GAMES and GAMES[group_id].players_in_game
-            and message.from_user.id == GAMES[group_id].players_in_game[0].user_id and not GAMES[group_id].answered):
+            and message.from_user.id == GAMES[group_id].players_in_game[0].user_id
+            and not GAMES[group_id].answered and GAMES[group_id].accepting_answers
+            and all([c in ascii_lowercase for c in message.text.lower()])):
         await GAMES[group_id].handle_answer(message)
 
 

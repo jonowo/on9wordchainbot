@@ -11,7 +11,6 @@ dp = Dispatcher(bot)
 BOT_ID = int(TOKEN.partition(":")[0])
 OWNER_ID = 463998526
 ADMIN_GROUP_ID = -1001141544515
-MAX_PLAYERS = 30
 GAMES = {}
 
 WORDS = {i: set() for i in ascii_lowercase}
@@ -25,6 +24,19 @@ class GameState:
     JOINING = 0
     RUNNING = 1
     KILLGAME = -1
+
+
+class GameSettings:
+    INITIAL_JOINING_PHASE_SECONDS = 60
+    MAX_JOINING_PHASE_SECONDS = 180
+    MAX_PLAYERS = 30
+    MIN_TURN_SECONDS = 20
+    MAX_TURN_SECONDS = 40
+    TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE = 5
+    MIN_WORD_LENGTH_LIMIT = 3
+    MAX_WORD_LENGTH_LIMIT = 10
+    WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE = 1
+    TURNS_BETWEEN_LIMITS_CHANGE = 5
 
 
 class GroupFilter(BoundFilter):
