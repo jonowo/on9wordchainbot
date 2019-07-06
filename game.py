@@ -1,5 +1,6 @@
 import asyncio
 from functools import lru_cache
+from operator import attrgetter
 from random import choice, sample, shuffle, randint
 from string import ascii_lowercase
 from typing import Optional, Any
@@ -14,6 +15,7 @@ class Player:
         self.user_id = user.id
         self.name = f"[{user.full_name}](https://t.me/{user.username})" if user.username else f"*{user.full_name}*"
         self.mention = user.get_mention()
+        self.total_letters = 0  # For elimination game only
 
 
 class ClassicGame:
@@ -24,6 +26,7 @@ class ClassicGame:
         self.players = []
         self.players_in_game = []
         self.state = GameState.JOINING
+        self.min_players = GameSettings.NORMAL_GAME_MIN_PLAYERS
         self.max_players = GameSettings.MAX_PLAYERS
         self.time_left = GameSettings.INITIAL_JOINING_PHASE_SECONDS
         self.time_limit = GameSettings.MAX_TURN_SECONDS
@@ -135,8 +138,7 @@ class ClassicGame:
     async def handle_answer(self, message: types.Message) -> None:
         word = message.text.lower()
         if not word.startswith(self.current_word[-1]):
-            await message.reply(
-                f"*{word.capitalize()}* does not start with *{self.current_word[-1].upper()}*.")
+            await message.reply(f"*{word.capitalize()}* does not start with *{self.current_word[-1].upper()}*.")
             return
         if len(word) < self.min_letters_limit:
             await message.reply(f"*{word.capitalize()}* has less than {self.min_letters_limit} letters.")
@@ -178,7 +180,6 @@ class ClassicGame:
     async def running_phase(self) -> Optional[bool]:
         if self.answered:
             self.players_in_game.append(self.players_in_game.pop(0))
-            await self.send_turn_message()
         else:
             self.time_left -= 1
             if self.time_left > 0:
@@ -189,17 +190,18 @@ class ClassicGame:
             if len(self.players_in_game) == 1:
                 await self.send_message(
                     f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
-                    f"Total words: {self.turns}" +
-                    (f"\nLongest word: *{self.longest_word.capitalize()}* from "
-                     f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
-                     if self.longest_word else "")
+                    f"Total words: {self.turns}"
+                    + (f"\nLongest word: *{self.longest_word.capitalize()}* from "
+                       f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
+                       if self.longest_word else "")
                 )
                 del GAMES[self.group_id]
                 return True
-            await self.send_turn_message()
+        await self.send_turn_message()
 
     async def main_loop(self, message: types.Message) -> None:
-        await self.send_message(f"A {self.name} is starting. You have {self.time_left}s to /join.")
+        await self.send_message(f"A {self.name} is starting. {self.min_players}-{self.max_players} players are needed."
+                                f" You have {self.time_left}s to /join.")
         await self.join(message)
         while True:
             await asyncio.sleep(1)
@@ -209,7 +211,7 @@ class ClassicGame:
                     if self.time_left in (15, 30, 60):
                         await self.send_message(f"{self.time_left}s left to /join.")
                 else:
-                    if len(self.players) < 2:
+                    if len(self.players) < self.min_players:
                         await self.send_message("Not enough players. Game terminated.")
                         del GAMES[self.group_id]
                         return
@@ -263,7 +265,6 @@ class ChaosGame(ClassicGame):
         if self.answered:
             self.players_in_game.append(self.players_in_game.pop(0))
             self.players_in_game.insert(0, self.players_in_game.pop(randint(0, len(self.players_in_game) - 2)))
-            await self.send_turn_message()
         else:
             self.time_left -= 1
             if self.time_left > 0:
@@ -282,7 +283,7 @@ class ChaosGame(ClassicGame):
                 del GAMES[self.group_id]
                 return True
             self.players_in_game.insert(0, self.players_in_game.pop(randint(0, len(self.players_in_game) - 2)))
-            await self.send_turn_message()
+        await self.send_turn_message()
 
 
 class ChosenFirstLetterGame(ClassicGame):
@@ -304,8 +305,7 @@ class ChosenFirstLetterGame(ClassicGame):
     async def handle_answer(self, message: types.Message) -> None:
         word = message.text.lower()
         if not word.startswith(self.current_word):
-            await message.reply(
-                f"*{word.capitalize()}* does not start with *{self.current_word.upper()}*.")
+            await message.reply(f"*{word.capitalize()}* does not start with *{self.current_word.upper()}*.")
             return
         if len(word) < self.min_letters_limit:
             await message.reply(f"*{word.capitalize()}* has less than {self.min_letters_limit} letters.")
@@ -367,8 +367,7 @@ class BannedLettersGame(ClassicGame):
     async def handle_answer(self, message: types.Message) -> None:
         word = message.text.lower()
         if not word.startswith(self.current_word[-1]):
-            await message.reply(
-                f"*{word.capitalize()}* does not start with *{self.current_word[-1].upper()}*.")
+            await message.reply(f"*{word.capitalize()}* does not start with *{self.current_word[-1].upper()}*.")
             return
         if any([c for c in self.banned_letters if c in word]):
             await message.reply(f"*{word.capitalize()}* include banned letters "
@@ -425,3 +424,103 @@ class BannedLettersGame(ClassicGame):
         await self.send_message(f"The first word is *{self.current_word.capitalize()}*.\n"
                                 f"Banned letters: *{', '.join(c.upper() for c in self.banned_letters)}*\n\n"
                                 "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
+
+
+class EliminationGame(ClassicGame):
+    name = "elimination game"
+
+    def __init__(self, group_id: int) -> None:
+        super().__init__(group_id)
+        self.min_players = GameSettings.SPECIAL_GAME_MIN_PLAYERS
+        self.max_players = GameSettings.SPECIAL_GAME_MAX_PLAYERS
+        self.time_left = GameSettings.SPECIAL_GAME_INITIAL_JOINING_PHASE_SECONDS
+        self.time_limit = GameSettings.FIXED_TURN_SECONDS
+        self.min_letters_limit = 0
+        self.round = 1
+        self.turns_until_elimination = 0
+
+    async def forcejoin(self, message: types.Message):
+        if self.state == GameState.JOINING:
+            await super().forcejoin(message)
+
+    def get_leaderboard(self) -> str:
+        players = self.players_in_game[:]
+        players.sort(key=attrgetter("total_letters"), reverse=True)
+        text = ""
+        for i, p in enumerate(players, start=1):
+            text += f"{i}. {p.name}: {p.total_letters}\n"
+        return text[:-1]
+
+    async def send_turn_message(self) -> None:
+        await self.send_message(
+            (f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
+             if self.turns_until_elimination > 1 else f"Turn: {self.players_in_game[0].mention}\n")
+            + f"Your word must start with *{self.current_word[-1].upper()}*.\n"
+              f"You have *{self.time_limit}s* to answer.\n\n" + "Leaderboard:\n" + self.get_leaderboard()
+        )
+        self.answered = False
+        self.accepting_answers = True
+        self.time_left = self.time_limit
+
+    async def handle_answer(self, message: types.Message) -> None:
+        word = message.text.lower()
+        if not word.startswith(self.current_word[-1]):
+            await message.reply(f"*{word.capitalize()}* does not start with *{self.current_word[-1].upper()}*.")
+            return
+        if word in self.used_words:
+            await message.reply(f"*{word.capitalize()}* has been used.")
+            return
+        if word not in WORDS[word[0]]:
+            await message.reply(f"*{word.capitalize()}* is not in my list of words.")
+            return
+        self.used_words.add(word)
+        self.turns += 1
+        self.players_in_game[0].total_letters += len(word)
+        self.current_word = word
+        if len(word) > len(self.longest_word):
+            self.longest_word = word
+            self.longest_word_sender_id = message.from_user.id
+        self.answered = True
+        self.accepting_answers = False
+        await self.send_message(f"*{word.capitalize()}* is accepted.")
+
+    async def running_initialization(self) -> None:
+        self.turns_until_elimination = len(self.players)
+        self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
+        self.used_words.add(self.current_word)
+        await self.send_message(f"The first word is *{self.current_word.capitalize()}*.\n\n"
+                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
+        await self.send_message("Round 1 is starting...")
+
+    async def running_phase(self) -> Optional[bool]:
+        if not self.answered:
+            self.time_left -= 1
+            if self.time_left > 0:
+                return
+            self.accepting_answers = False
+            await self.send_message(f"{self.players_in_game[0].mention} ran out of time!")
+        self.players_in_game.append(self.players_in_game.pop(0))
+        self.turns_until_elimination -= 1
+        if not self.turns_until_elimination:
+            min_score = min(p.total_letters for p in self.players_in_game)
+            eliminated = [p for p in self.players_in_game if p.total_letters == min_score]
+            self.players_in_game = [p for p in self.players_in_game if p not in eliminated]
+            await self.send_message(
+                f"Round {self.round} completed.\n\n" + ", ".join(p.mention for p in eliminated) + " "
+                + ("is" if len(eliminated) == 1 else "are") + f" eliminated for having the lowest score of {min_score}."
+                + ("\n\nLeaderboard:\n" + self.get_leaderboard() if len(self.players_in_game) else "")
+            )
+            if len(self.players_in_game) <= 1:
+                await self.send_message(
+                    f"{(self.players_in_game[0].mention if self.players_in_game else 'No one')} won the game out of "
+                    f"{len(self.players)} players!\nTotal words: {self.turns}"
+                    + (f"\nLongest word: *{self.longest_word.capitalize()}* from "
+                       f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
+                       if self.longest_word else "")
+                )
+                del GAMES[self.group_id]
+                return True
+            self.round += 1
+            self.turns_until_elimination = len(self.players_in_game)
+            await self.send_message(f"Round {self.round} is starting...")
+        await self.send_turn_message()

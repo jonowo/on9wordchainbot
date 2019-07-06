@@ -3,6 +3,8 @@
 
 Visit [On9 Word Chain Bot](https://t.me/on9wordchainbot) on Telegram.
 
+Join the [official channel](https://t.me/On9Updates) and the [official group](https://t.me/on9wordchain).
+
 ## Installation with Python 3.7+ on Linux
 1. Create a bot with [BotFather](https://t.me/BotFather)
 2. Run `git clone https://github.com/Tr-Jono/on9wordchainbot`

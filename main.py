@@ -8,7 +8,7 @@ from aiogram import executor, types
 from aiogram.utils.exceptions import TelegramAPIError
 
 from constants import bot, dp, BOT_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, WORDS, GameState, GameSettings
-from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame
+from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, EliminationGame
 
 seed(time())
 logging.basicConfig(level=logging.INFO)
@@ -65,9 +65,9 @@ async def cmd_help(message: types.Message) -> None:
 @dp.message_handler(commands="info")
 async def cmd_info(message: types.Message) -> None:
     await message.reply(
-        "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English / Cantonese.\n"
         "Join the [official channel](https://t.me/On9Updates) and the [official group](https://t.me/on9wordchain)!\n"
-        "GitHub repo: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)",
+        "GitHub repo: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)"
+        "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English / Cantonese.\n",
         disable_web_page_preview=True
     )
 
@@ -207,6 +207,26 @@ async def cmd_startbl(message: types.Message) -> None:
     await game.main_loop(message)
 
 
+@dp.message_handler(commands=["startelim", "startelimination"])
+async def cmd_startelim(message: types.Message) -> None:
+    if message.chat.id > 0:
+        await games_group_only(message)
+        return
+    rmsg = message.reply_to_message
+    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
+        return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+    group_id = message.chat.id
+    if group_id in GAMES:
+        await GAMES[group_id].join(message)
+        return
+    game = EliminationGame(message.chat.id)
+    GAMES[group_id] = game
+    await game.main_loop(message)
+
+
 @dp.message_handler(commands="join")
 async def cmd_join(message: types.Message) -> None:
     if message.chat.id > 0:
@@ -317,4 +337,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# TODO: VP?
+# TODO: Elimination: show leaderboard top and bottom 5 players only
+# TODO: Modes: Mixed elimination game and race game based on word length
+# TODO: Virtual players?
+# TODO: Support other languages? (e.g. Chinese idioms)
