@@ -24,6 +24,7 @@ class ClassicGame:
         self.players = []
         self.players_in_game = []
         self.state = GameState.JOINING
+        self.max_players = GameSettings.MAX_PLAYERS
         self.time_left = GameSettings.INITIAL_JOINING_PHASE_SECONDS
         self.time_limit = GameSettings.MAX_TURN_SECONDS
         self.min_letters_limit = GameSettings.MIN_WORD_LENGTH_LIMIT
@@ -43,7 +44,7 @@ class ClassicGame:
         return (await bot.get_chat_member(self.group_id, user_id)).is_chat_admin()
 
     async def join(self, message: types.Message) -> None:
-        if self.state != GameState.JOINING or len(self.players) == GameSettings.MAX_PLAYERS:
+        if self.state != GameState.JOINING or len(self.players) >= self.max_players:
             return
         user = message.from_user
         for p in self.players:
@@ -54,11 +55,11 @@ class ClassicGame:
         await message.reply(f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
                             disable_web_page_preview=True)
-        if len(self.players) == GameSettings.MAX_PLAYERS:
+        if len(self.players) >= self.max_players:
             self.time_left = -99999
 
     async def forcejoin(self, message: types.Message) -> None:
-        if self.state == GameState.KILLGAME or len(self.players) == GameSettings.MAX_PLAYERS:
+        if self.state == GameState.KILLGAME or len(self.players) >= self.max_players:
             return
         user = message.reply_to_message.from_user
         for p in self.players:
@@ -71,7 +72,7 @@ class ClassicGame:
         await message.reply(f"{player.name} has been joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
                             disable_web_page_preview=True)
-        if len(self.players) == GameSettings.MAX_PLAYERS:
+        if len(self.players) >= self.max_players:
             self.time_left = -99999
 
     async def flee(self, message: types.Message) -> None:
@@ -82,11 +83,9 @@ class ClassicGame:
             if self.players[i].user_id == user_id:
                 player = self.players.pop(i)
                 break
-        await message.reply(f"{player.name} fleed. There {'is' if len(self.players) == 1 else 'are'} "
+        await message.reply(f"{player.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
                             disable_web_page_preview=True)
-        if len(self.players) == GameSettings.MAX_PLAYERS:
-            self.time_left = -99999
 
     async def forceflee(self, message: types.Message) -> None:
         if self.state != GameState.JOINING or not message.reply_to_message:
@@ -99,11 +98,9 @@ class ClassicGame:
                 player = self.players.pop(i)
                 break
         await message.reply(
-            f"{player.name} has been fleed. There {'is' if len(self.players) == 1 else 'are'} {len(self.players)} "
+            f"{player.name} has been fled. There {'is' if len(self.players) == 1 else 'are'} {len(self.players)} "
             f"player{'' if len(self.players) == 1 else 's'}.", disable_web_page_preview=True
         )
-        if len(self.players) == GameSettings.MAX_PLAYERS:
-            self.time_left = -99999
 
     async def extend(self, message: types.Message) -> None:
         if self.state != GameState.JOINING:
@@ -128,7 +125,7 @@ class ClassicGame:
             f"Your word must start with *{self.current_word[-1].upper()}* "
             f"and include *at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}*.\n"
             f"You have *{self.time_limit}s* to answer.\n"
-            f"Players remaining: {len(self.players_in_game)}\n"
+            f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
             f"Total words: {self.turns}"
         )
         self.answered = False
@@ -191,7 +188,8 @@ class ClassicGame:
             del self.players_in_game[0]
             if len(self.players_in_game) == 1:
                 await self.send_message(
-                    f"{self.players_in_game[0].mention} won the game!\nTotal words: {self.turns}" +
+                    f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
+                    f"Total words: {self.turns}" +
                     (f"\nLongest word: *{self.longest_word.capitalize()}* from "
                      f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
                      if self.longest_word else "")
@@ -201,7 +199,7 @@ class ClassicGame:
             await self.send_turn_message()
 
     async def main_loop(self, message: types.Message) -> None:
-        await self.send_message(f"A {self.name} is starting. Join the game by clicking /join.")
+        await self.send_message(f"A {self.name} is starting. You have {self.time_left}s to /join.")
         await self.join(message)
         while True:
             await asyncio.sleep(1)
@@ -249,7 +247,7 @@ class ChaosGame(ClassicGame):
             f"Your word must start with *{self.current_word[-1].upper()}* "
             f"and contain *at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}*.\n"
             f"You have *{self.time_limit}s* to answer.\n"
-            f"Players remaining: {len(self.players_in_game)}\n"
+            f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
             f"Total words: {self.turns}"
         )
         self.answered = False
@@ -271,11 +269,12 @@ class ChaosGame(ClassicGame):
             if self.time_left > 0:
                 return
             self.accepting_answers = False
-            del self.players_in_game[0]
             await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!")
+            del self.players_in_game[0]
             if len(self.players_in_game) == 1:
                 await self.send_message(
-                    f"{self.players_in_game[0].mention} won the game!\nUnique words: {self.turns}" +
+                    f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
+                    f"Unique words: {self.turns}" +
                     (f"\nLongest word: *{self.longest_word.capitalize()}* from "
                      f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
                      if self.longest_word else "")
@@ -295,7 +294,7 @@ class ChosenFirstLetterGame(ClassicGame):
             f"Your word must start with *{self.current_word.upper()}* "
             f"and contain *at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}*.\n"
             f"You have *{self.time_limit}s* to answer.\n"
-            f"Players remaining: {len(self.players_in_game)}\n"
+            f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
             f"Total words: {self.turns}"
         )
         self.answered = False
@@ -358,7 +357,7 @@ class BannedLettersGame(ClassicGame):
             f"*exclude letters {', '.join(c.upper() for c in self.banned_letters)}* "
             f"and include *at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}*.\n"
             f"You have *{self.time_limit}s* to answer.\n"
-            f"Players remaining: {len(self.players_in_game)}\n"
+            f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
             f"Total words: {self.turns}"
         )
         self.answered = False

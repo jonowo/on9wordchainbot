@@ -7,7 +7,7 @@ from time import time
 from aiogram import executor, types
 from aiogram.utils.exceptions import TelegramAPIError
 
-from constants import bot, dp, BOT_ID, ADMIN_GROUP_ID, GAMES, WORDS, GameState
+from constants import bot, dp, BOT_ID, ADMIN_GROUP_ID, GAMES, WORDS, GameState, GameSettings
 from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame
 
 seed(time())
@@ -23,7 +23,7 @@ async def games_group_only(message: types.Message) -> None:
     )
 
 
-@dp.message_handler(is_group=False, commands=["start"])
+@dp.message_handler(is_group=False, commands="start")
 async def cmd_start(message: types.Message) -> None:
     await message.reply(
         "Thanks for starting me. Add me to a group to start playing games!",
@@ -39,7 +39,7 @@ async def added_into_group(message: types.Message) -> None:
         await message.reply("Thanks for adding me. Click /startclassic to start a classic game!", reply=False)
 
 
-@dp.message_handler(commands=["help"])
+@dp.message_handler(commands="help")
 async def cmd_help(message: types.Message) -> None:
     await message.reply(
         "I provide a variation of the game _Word Chain_ in which players come up with words that begin with the last "
@@ -53,21 +53,29 @@ async def cmd_help(message: types.Message) -> None:
         "/startcfl - Chosen first letter game\n"
         "Players come up with words starting with a specific letter randomly chosen at the beginning of the game.\n\n"
         "/startbl - Banned letters game\n"
-        "2-4 letters (incl. max one vowel) are randomly chosen to be banned and cannot be present in words.\n\n"
-        "Please contact [Trainer Jono](https://t.me/Trainer_Jono) for enquiries, feedback and suggestions.\n"
+        "2-4 letters (incl. max one vowel) are randomly chosen to be banned and cannot be present in words.\n\n",
+        disable_web_page_preview=True
+    )
+
+
+@dp.message_handler(commands="info")
+async def cmd_info(message: types.Message) -> None:
+    await message.reply(
+        "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English / Cantonese.\n"
+        "Join the [official channel](https://t.me/On9Updates) and the [official group](https://t.me/on9wordchain)!\n"
         "GitHub repo: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)",
         disable_web_page_preview=True
     )
 
 
-@dp.message_handler(commands=["ping"])
+@dp.message_handler(commands="ping")
 async def cmd_ping(message: types.Message) -> None:
     t = time()
     msg = await message.reply("Pong!")
     await msg.edit_text(f"Pong!\nSeconds used: `{time() - t:.3f}`")
 
 
-@dp.message_handler(commands=["runinfo"])
+@dp.message_handler(commands="runinfo")
 async def cmd_runinfo(message: types.Message) -> None:
     uptime = datetime.now() - build_time
     await message.reply(
@@ -95,7 +103,7 @@ async def cmd_exists(message: types.Message) -> None:
     await message.reply(f"*{word.capitalize()}* DOES NOT EXIST in my list of words.")
 
 
-@dp.message_handler(commands=["startclassic"])
+@dp.message_handler(commands="startclassic")
 async def cmd_startclassic(message: types.Message) -> None:
     if message.chat.id > 0:
         await games_group_only(message)
@@ -115,7 +123,7 @@ async def cmd_startclassic(message: types.Message) -> None:
     await game.main_loop(message)
 
 
-@dp.message_handler(commands=["starthard"])
+@dp.message_handler(commands="starthard")
 async def cmd_starthard(message: types.Message) -> None:
     if message.chat.id > 0:
         await games_group_only(message)
@@ -135,7 +143,7 @@ async def cmd_starthard(message: types.Message) -> None:
     await game.main_loop(message)
 
 
-@dp.message_handler(commands=["startchaos"])
+@dp.message_handler(commands="startchaos")
 async def cmd_startchaos(message: types.Message) -> None:
     if message.chat.id > 0:
         await games_group_only(message)
@@ -155,7 +163,7 @@ async def cmd_startchaos(message: types.Message) -> None:
     await game.main_loop(message)
 
 
-@dp.message_handler(commands=["startcfl"])
+@dp.message_handler(commands="startcfl")
 async def cmd_startcfl(message: types.Message) -> None:
     if message.chat.id > 0:
         await games_group_only(message)
@@ -175,7 +183,7 @@ async def cmd_startcfl(message: types.Message) -> None:
     await game.main_loop(message)
 
 
-@dp.message_handler(commands=["startbl"])
+@dp.message_handler(commands="startbl")
 async def cmd_startbl(message: types.Message) -> None:
     if message.chat.id > 0:
         await games_group_only(message)
@@ -195,7 +203,7 @@ async def cmd_startbl(message: types.Message) -> None:
     await game.main_loop(message)
 
 
-@dp.message_handler(commands=["join", "john", "disaster"])
+@dp.message_handler(commands="join")
 async def cmd_join(message: types.Message) -> None:
     if message.chat.id > 0:
         await games_group_only(message)
@@ -208,7 +216,7 @@ async def cmd_join(message: types.Message) -> None:
         await GAMES[group_id].join(message)
 
 
-@dp.message_handler(is_group=True, is_owner_or_admin=True, commands=["forcejoin", "forcejohn", "forcedisaster"])
+@dp.message_handler(is_group=True, is_owner_or_admin=True, commands="forcejoin")
 async def cmd_forcejoin(message: types.Message) -> None:
     group_id = message.chat.id
     rmsg = message.reply_to_message
@@ -216,28 +224,28 @@ async def cmd_forcejoin(message: types.Message) -> None:
         await GAMES[message.chat.id].forcejoin(message)
 
 
-@dp.message_handler(is_group=True, commands=["extend"])
+@dp.message_handler(is_group=True, commands="extend")
 async def cmd_extend(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].extend(message)
 
 
-@dp.message_handler(is_group=True, is_owner_or_admin=True, commands=["forcestart"])
+@dp.message_handler(is_group=True, is_owner_or_admin=True, commands="forcestart")
 async def cmd_forcestart(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES and GAMES[group_id].state == GameState.JOINING:
         GAMES[group_id].time_left = -99999
 
 
-@dp.message_handler(is_group=True, commands=["flee"])
+@dp.message_handler(is_group=True, commands="flee")
 async def cmd_flee(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].flee(message)
 
 
-@dp.message_handler(is_group=True, is_owner=True, commands=["forceflee"])
+@dp.message_handler(is_group=True, is_owner=True, commands="forceflee")
 async def cmd_forceflee(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES:
@@ -251,21 +259,32 @@ async def cmd_killgame(message: types.Message) -> None:
         GAMES[group_id].state = GameState.KILLGAME
 
 
-@dp.message_handler(is_group=True, is_owner=True, commands=["forceskip"])
+@dp.message_handler(is_group=True, is_owner=True, commands="forceskip")
 async def cmd_forceskip(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES and GAMES[group_id].state == GameState.RUNNING and not GAMES[group_id].answered:
         GAMES[group_id].time_left = -99999
 
 
-@dp.message_handler(is_owner=True, commands=["maintmode"])
+@dp.message_handler(is_group=True, is_owner=True, commands="incmaxp")
+async def cmd_incmaxp(message: types.Message) -> None:
+    group_id = message.chat.id
+    if (group_id not in GAMES or GAMES[group_id].state != GameState.JOINING
+            or GAMES[group_id].max_players == GameSettings.INCREASED_MAX_PLAYERS):
+        return
+    GAMES[group_id].max_players = GameSettings.INCREASED_MAX_PLAYERS
+    await message.reply(f"Max players for this game increased from {GameSettings.MAX_PLAYERS} to "
+                        f"{GameSettings.INCREASED_MAX_PLAYERS}.")
+
+
+@dp.message_handler(is_owner=True, commands="maintmode")
 async def cmd_maintmode(message: types.Message) -> None:
     global MAINT_MODE
     MAINT_MODE = not MAINT_MODE
     await message.reply(f"Maintenance mode has been switched {'on' if MAINT_MODE else 'off'}.")
 
 
-@dp.message_handler(is_group=True, is_owner=True, commands=["leave"])
+@dp.message_handler(is_group=True, is_owner=True, commands="leave")
 async def cmd_leave(message: types.Message) -> None:
     await message.chat.leave()
 
