@@ -7,11 +7,12 @@ from time import time
 from aiogram import executor, types
 from aiogram.utils.exceptions import TelegramAPIError
 
-from constants import bot, dp, BOT_ID, ADMIN_GROUP_ID, GAMES, WORDS, GameState, GameSettings
+from constants import bot, dp, BOT_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, WORDS, GameState, GameSettings
 from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame
 
 seed(time())
 logging.basicConfig(level=logging.INFO)
+build_time = datetime.now()
 MAINT_MODE = False
 
 
@@ -37,6 +38,9 @@ async def cmd_start(message: types.Message) -> None:
 async def added_into_group(message: types.Message) -> None:
     if any([user.id == BOT_ID for user in message.new_chat_members]):
         await message.reply("Thanks for adding me. Click /startclassic to start a classic game!", reply=False)
+    elif message.chat.id == OFFICIAL_GROUP_ID:
+        await message.reply("Welcome to the official On9 Word Chain group! "
+                            "Click /startclassic to start a classic game!")
 
 
 @dp.message_handler(commands="help")
@@ -307,8 +311,6 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
 
 
 def main() -> None:
-    global build_time
-    build_time = datetime.now()
     executor.start_polling(dp, skip_updates=True)
 
 

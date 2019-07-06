@@ -5,12 +5,13 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.dispatcher.filters import BoundFilter
 
 with open("token.txt") as f:
-    TOKEN = f.read().strip()
+    TOKEN = f.readline().strip()
 bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN)
 dp = Dispatcher(bot)
 BOT_ID = int(TOKEN.partition(":")[0])
 OWNER_ID = 463998526
 ADMIN_GROUP_ID = -1001141544515
+OFFICIAL_GROUP_ID = -1001333598796
 GAMES = {}
 
 WORDS = {i: set() for i in ascii_lowercase}

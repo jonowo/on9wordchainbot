@@ -10,6 +10,5 @@ Visit [On9 Word Chain Bot](https://t.me/on9wordchainbot) on Telegram.
 4. Run `sudo pip3 install -r requirements.txt`
 5. Run `cat > token.txt`
 6. Type in the token of the bot you created earlier, press `Enter` and `Ctrl+D`
-7. Edit `OWNER_ID` and `ADMIN_GROUP_ID` in [`constants.py`](constants.py) (optional)
-8. Run `python3 main.py` to start the bot
-9. Press `Ctrl+C` to stop the bot
+7. Run `python3 main.py` to start the bot
+8. Press `Ctrl+C` to stop the bot
