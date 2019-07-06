@@ -46,7 +46,7 @@ class GroupFilter(BoundFilter):
         self.is_group = is_group
 
     async def check(self, message: types.Message) -> bool:
-        return message.chat.id < 0
+        return message.chat.id < 0 if self.is_group else message.chat.id > 0
 
 
 class OwnerFilter(BoundFilter):

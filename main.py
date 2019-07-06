@@ -16,16 +16,26 @@ MAINT_MODE = False
 
 async def games_group_only(message: types.Message) -> None:
     await message.reply(
-        "Games are only available in groups.", reply_markup=types.InlineKeyboardMarkup([[
+        "Games are only available in groups.", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
             types.InlineKeyboardButton("Add me to a group!", url="https://t.me/on9wordchainbot?startgroup=_")
         ]])
     )
 
 
-@dp.message_handler(commands=["start"])
+@dp.message_handler(is_group=False, commands=["start"])
 async def cmd_start(message: types.Message) -> None:
-    if message.chat.id > 0:
-        await message.reply("Bruh")
+    await message.reply(
+        "Thanks for starting me. Add me to a group to start playing games!",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton("Add me to a group!", url="https://t.me/on9wordchainbot?startgroup=_")
+        ]])
+    )
+
+
+@dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
+async def added_into_group(message: types.Message) -> None:
+    if any([user.id for user in message.new_chat_members]):
+        await message.reply("Thanks for adding me. Click /startclassic to start a classic game!", reply=False)
 
 
 @dp.message_handler(commands=["help"])
@@ -35,7 +45,7 @@ async def cmd_help(message: types.Message) -> None:
         "letter of the previous word. Players unable to come up with a word in time are eliminated from the game. The "
         "first word is randomly chosen. The time limit decreases from 40 to 20 seconds and the minimum word length"
         "limit increases from 3 to 10 letters throughout the game to level up the difficulty.\n\n"
-        "/startgame - Classic game\n"
+        "/startclassic - Classic game\n"
         "Classic gameplay.\n\n"
         "/startchaos - Chaos game\n"
         "No turn order, players are selected to answer randomly.\n\n"
@@ -251,6 +261,11 @@ async def cmd_maintmode(message: types.Message) -> None:
     await message.reply(f"Maintenance mode has been switched {'on' if MAINT_MODE else 'off'}.")
 
 
+@dp.message_handler(is_group=True, is_owner=True, commands=["leave"])
+async def cmd_leave(message: types.Message) -> None:
+    await message.chat.leave()
+
+
 @dp.message_handler(is_group=True, regexp="^\w+$")
 async def message_handler(message: types.Message) -> None:
     group_id = message.chat.id
@@ -264,7 +279,8 @@ async def message_handler(message: types.Message) -> None:
 @dp.errors_handler(exception=TelegramAPIError)
 async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
     await bot.send_message(ADMIN_GROUP_ID, f"`{error.__class__.__name__} @ {update.message.chat.id}`:\n`{str(error)}`")
-    await bot.send_message(update.message.chat.id, "Error occurred. My owner has been notified.")
+    await bot.send_message(update.message.chat.id, "Error occurred. My owner has been notified.",
+                           reply_to_message_id=getattr(update.message, "message_id", None))
 
 
 def main() -> None:
