@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from random import seed
 from string import ascii_lowercase
 from time import time
@@ -34,7 +35,7 @@ async def cmd_start(message: types.Message) -> None:
 
 @dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
 async def added_into_group(message: types.Message) -> None:
-    if any([user.id for user in message.new_chat_members]):
+    if any([user.id == BOT_ID for user in message.new_chat_members]):
         await message.reply("Thanks for adding me. Click /startclassic to start a classic game!", reply=False)
 
 
@@ -68,10 +69,13 @@ async def cmd_ping(message: types.Message) -> None:
 
 @dp.message_handler(commands=["runinfo"])
 async def cmd_runinfo(message: types.Message) -> None:
+    uptime = datetime.now() - build_time
     await message.reply(
-        f"Total games: {len(GAMES)}\n"
-        f"Running games: {len([g for g in GAMES.values() if g.state == GameState.RUNNING])}\n"
-        f"Players: {sum([len(g.players) for g in GAMES.values()])}"
+        f"Build time: `{'{0.day}/{0.month}/{0.year}'.format(build_time)} {str(build_time).split()[1]} HKT`\n"
+        f"Uptime: `{uptime.days}.{str(uptime).rsplit(maxsplit=1)[-1]}`\n"
+        f"Total games: `{len(GAMES)}`\n"
+        f"Running games: `{len([g for g in GAMES.values() if g.state == GameState.RUNNING])}`\n"
+        f"Players: `{sum([len(g.players) for g in GAMES.values()])}`"
     )
 
 
@@ -284,6 +288,8 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
 
 
 def main() -> None:
+    global build_time
+    build_time = datetime.now()
     executor.start_polling(dp, skip_updates=True)
 
 
