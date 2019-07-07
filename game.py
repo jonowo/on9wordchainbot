@@ -449,12 +449,38 @@ class EliminationGame(ClassicGame):
         if self.state == GameState.JOINING:
             await super().forcejoin(message)
 
-    def get_leaderboard(self) -> str:
+    def get_leaderboard(self, show_player: Optional[Player] = None) -> str:
         players = self.players_in_game[:]
         players.sort(key=attrgetter("total_letters"), reverse=True)
         text = ""
-        for i, p in enumerate(players, start=1):
-            text += f"{i}. {p.name}: {p.total_letters}\n"
+        if show_player:
+            if len(players) <= 10:
+                for i, p in enumerate(players, start=1):
+                    t = f"{i}. {p.name}: {p.total_letters}\n"
+                    if p == show_player:
+                        t = "> " + t
+                    text += t
+            elif players.index(show_player) <= 5 or players.index(show_player) >= len(players) - 4:
+                for i, p in enumerate(players[:5], start=1):
+                    t = f"{i}. {p.name}: {p.total_letters}\n"
+                    if p == show_player:
+                        t = "> " + t
+                    text += t
+                text += "...\n"
+                for i, p in enumerate(players[-5:], start=len(players) - 4):
+                    t = f"{i}. {p.name}: {p.total_letters}\n"
+                    if p == show_player:
+                        t = "> " + t
+                    text += t
+            else:
+                for i, p in enumerate(players[:5], start=1):
+                    text += f"{i}. {p.name}: {p.total_letters}\n"
+                text += f"...\n> {players.index(show_player) + 1}. {show_player.name}: {p.total_letters}\n...\n"
+                for i, p in enumerate(players[-5:], start=len(players) - 4):
+                    text += f"{i}. {p.name}: {p.total_letters}\n"
+        else:
+            for i, p in enumerate(players, start=1):
+                text += f"{i}. {p.name}: {p.total_letters}\n"
         return text[:-1]
 
     async def send_turn_message(self) -> None:
@@ -462,7 +488,8 @@ class EliminationGame(ClassicGame):
             (f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
              if self.turns_until_elimination > 1 else f"Turn: {self.players_in_game[0].mention}\n")
             + f"Your word must start with *{self.current_word[-1].upper()}*.\n"
-              f"You have *{self.time_limit}s* to answer.\n\n" + "Leaderboard:\n" + self.get_leaderboard()
+              f"You have *{self.time_limit}s* to answer.\n\n" + "Leaderboard:\n"
+            + self.get_leaderboard(show_player=self.players_in_game[0])
         )
         self.answered = False
         self.accepting_answers = True
@@ -510,12 +537,13 @@ class EliminationGame(ClassicGame):
         if not self.turns_until_elimination:
             min_score = min(p.total_letters for p in self.players_in_game)
             eliminated = [p for p in self.players_in_game if p.total_letters == min_score]
-            self.players_in_game = [p for p in self.players_in_game if p not in eliminated]
             await self.send_message(
-                f"Round {self.round} completed.\n\n" + ", ".join(p.mention for p in eliminated) + " "
-                + ("is" if len(eliminated) == 1 else "are") + f" eliminated for having the lowest score of {min_score}."
-                + ("\n\nLeaderboard:\n" + self.get_leaderboard() if len(self.players_in_game) else "")
+                f"Round {self.round} completed.\n\n"
+                + "Leaderboard:\n" + self.get_leaderboard() + "\n\n"
+                + ", ".join(p.mention for p in eliminated) + " " + ("is" if len(eliminated) == 1 else "are")
+                + f" eliminated for having the lowest score of {min_score}."
             )
+            self.players_in_game = [p for p in self.players_in_game if p not in eliminated]
             if len(self.players_in_game) <= 1:
                 await self.send_message(
                     f"{(self.players_in_game[0].mention if self.players_in_game else 'No one')} won the game out of "
@@ -528,5 +556,5 @@ class EliminationGame(ClassicGame):
                 return True
             self.round += 1
             self.turns_until_elimination = len(self.players_in_game)
-            await self.send_message(f"Round {self.round} is starting...")
+            await self.send_message(f"Round {self.round} is starting...\n\nLeaderboard:" + self.get_leaderboard())
         await self.send_turn_message()

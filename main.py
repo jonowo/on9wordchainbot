@@ -46,21 +46,20 @@ async def added_into_group(message: types.Message) -> None:
 @dp.message_handler(commands="help")
 async def cmd_help(message: types.Message) -> None:
     await message.reply(
-        "I provide a variation of the game _Word Chain_ in which players come up with words that begin with the last "
-        "letter of the previous word. Players unable to come up with a word in time are eliminated from the game. The "
-        "first word is randomly chosen. The time limit decreases from 40 to 20 seconds and the minimum word length"
-        "limit increases from 3 to 10 letters throughout the game to level up the difficulty.\n\n"
+        "I provide several variations of the English game _Word Chain_.\n\n"
         "/startclassic - Classic game\n"
-        "Classic gameplay.\n\n"
+        "Players come up with words that begin with the last letter of the previous word. Players unable to come up "
+        "with a word in time are eliminated from the game. The time limit decreases and the minimum word length limit "
+        "increases throughout the game to level up the difficulty.\n\n"
         "/startchaos - Chaos game\n"
-        "No turn order, players are selected to answer randomly.\n\n"
+        "Classic gameplay but without turn order, players are selected to answer by random.\n\n"
         "/startcfl - Chosen first letter game\n"
-        "Players come up with words starting with a specific letter randomly chosen at the beginning of the game.\n\n"
+        "Players come up with words starting with the chosen letter.\n\n"
         "/startbl - Banned letters game\n"
-        "2-4 letters (incl. max one vowel) are randomly chosen to be banned and cannot be present in words.\n\n"
+        "Classic gameplay but 2-4 letters (incl. max one vowel) are banned and cannot be present in words.\n\n"
         "/startelim - Elimination game\n"
-        "Each player has a score, which is their cumulative word length. After each player has played a round, the "
-        "player(s) with the lowest score is/are eliminated from the game. Last standing wins.",
+        "Each player has a score, i.e. their cumulative word length. After each player has played a round, player(s) "
+        "with the lowest score is/are eliminated from the game. Last standing player wins.",
         disable_web_page_preview=True
     )
 
@@ -69,8 +68,8 @@ async def cmd_help(message: types.Message) -> None:
 async def cmd_info(message: types.Message) -> None:
     await message.reply(
         "Join the [official channel](https://t.me/On9Updates) and the [official group](https://t.me/on9wordchain)!\n"
-        "GitHub repo: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)"
-        "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English / Cantonese.\n",
+        "GitHub repo: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
+        "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English or Cantonese.\n",
         disable_web_page_preview=True
     )
 
@@ -235,9 +234,6 @@ async def cmd_join(message: types.Message) -> None:
     if message.chat.id > 0:
         await games_group_only(message)
         return
-    rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
-        return
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
@@ -340,7 +336,6 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# TODO: Elimination: show leaderboard top and bottom 5 players only?
 # TODO: Modes: Mixed elimination game and race game based on word length
 # TODO: Virtual players?
 # TODO: Support other languages? (e.g. Chinese idioms)
