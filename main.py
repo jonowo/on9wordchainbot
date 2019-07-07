@@ -57,7 +57,10 @@ async def cmd_help(message: types.Message) -> None:
         "/startcfl - Chosen first letter game\n"
         "Players come up with words starting with a specific letter randomly chosen at the beginning of the game.\n\n"
         "/startbl - Banned letters game\n"
-        "2-4 letters (incl. max one vowel) are randomly chosen to be banned and cannot be present in words.\n\n",
+        "2-4 letters (incl. max one vowel) are randomly chosen to be banned and cannot be present in words.\n\n"
+        "/startelim - Elimination game\n"
+        "Each player has a score, which is their cumulative word length. After each player has played a round, the "
+        "player(s) with the lowest score is/are eliminated from the game. Last standing wins.",
         disable_web_page_preview=True
     )
 
@@ -337,7 +340,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# TODO: Elimination: show leaderboard top and bottom 5 players only
+# TODO: Elimination: show leaderboard top and bottom 5 players only?
 # TODO: Modes: Mixed elimination game and race game based on word length
 # TODO: Virtual players?
 # TODO: Support other languages? (e.g. Chinese idioms)

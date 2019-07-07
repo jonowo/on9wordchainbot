@@ -173,6 +173,8 @@ class ClassicGame:
 
     async def running_initialization(self) -> None:
         self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
+        while len(self.current_word) < self.min_letters_limit:
+            self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
         self.used_words.add(self.current_word)
         await self.send_message(f"The first word is *{self.current_word.capitalize()}*.\n\n"
                                 "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
@@ -200,8 +202,9 @@ class ClassicGame:
         await self.send_turn_message()
 
     async def main_loop(self, message: types.Message) -> None:
-        await self.send_message(f"A {self.name} is starting. {self.min_players}-{self.max_players} players are needed."
-                                f" You have {self.time_left}s to /join.")
+        await self.send_message(f"A{'n' if self.name[0] in 'aeiou' else ''} {self.name} is starting.\n"
+                                f"{self.min_players}-{self.max_players} players are needed.\n"
+                                f"You have {self.time_left}s to /join.")
         await self.join(message)
         while True:
             await asyncio.sleep(1)
@@ -258,6 +261,8 @@ class ChaosGame(ClassicGame):
 
     async def running_initialization(self) -> None:
         self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
+        while len(self.current_word) < self.min_letters_limit:
+            self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
         self.used_words.add(self.current_word)
         await self.send_message(f"The first word is *{self.current_word.capitalize()}*.")
 
@@ -416,7 +421,8 @@ class BannedLettersGame(ClassicGame):
         unbanned = "".join([c for c in ascii_lowercase if c not in self.banned_letters])
         n = 1
         self.current_word = sample(WORDS[choice(unbanned)], 1)[0]
-        while any([c in self.current_word for c in self.banned_letters]):
+        while (len(self.current_word) < self.min_letters_limit
+               or any([c in self.current_word for c in self.banned_letters])):
             self.current_word = sample(WORDS[choice(unbanned)], 1)[0]
             n += 1
         self.used_words.add(self.current_word)
