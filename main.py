@@ -12,7 +12,7 @@ from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, Ba
 
 seed(time())
 logging.basicConfig(level=logging.INFO)
-build_time = datetime.now()
+build_time = datetime.now().replace(microsecond=0)
 MAINT_MODE = False
 
 
@@ -83,7 +83,7 @@ async def cmd_ping(message: types.Message) -> None:
 
 @dp.message_handler(commands="runinfo")
 async def cmd_runinfo(message: types.Message) -> None:
-    uptime = datetime.now() - build_time
+    uptime = datetime.now().replace(microsecond=0) - build_time
     await message.reply(
         f"Build time: `{'{0.day}/{0.month}/{0.year}'.format(build_time)} {str(build_time).split()[1]} HKT`\n"
         f"Uptime: `{uptime.days}.{str(uptime).rsplit(maxsplit=1)[-1]}`\n"
@@ -104,9 +104,9 @@ async def cmd_exists(message: types.Message) -> None:
             await message.reply("Usage example: `/exists astrophotographer`")
             return
     if word in WORDS[word[0]]:
-        await message.reply(f"*{word.capitalize()}* EXISTS in my list of words.")
+        await message.reply(f"_{word.capitalize()}_ EXISTS in my list of words.")
         return
-    await message.reply(f"*{word.capitalize()}* DOES NOT EXIST in my list of words.")
+    await message.reply(f"_{word.capitalize()}_ DOES NOT EXIST in my list of words.")
 
 
 @dp.message_handler(commands="startclassic")
@@ -295,9 +295,9 @@ async def cmd_incmaxp(message: types.Message) -> None:
     if (group_id not in GAMES or GAMES[group_id].state != GameState.JOINING
             or GAMES[group_id].max_players == GameSettings.INCREASED_MAX_PLAYERS):
         return
-    GAMES[group_id].max_players = GameSettings.INCREASED_MAX_PLAYERS
-    await message.reply(f"Max players for this game increased from {GameSettings.MAX_PLAYERS} to "
+    await message.reply(f"Max players for this game increased from {GAMES[group_id].max_players} to "
                         f"{GameSettings.INCREASED_MAX_PLAYERS}.")
+    GAMES[group_id].max_players = GameSettings.INCREASED_MAX_PLAYERS
 
 
 @dp.message_handler(is_owner=True, commands="maintmode")
