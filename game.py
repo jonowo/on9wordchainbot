@@ -6,15 +6,21 @@ from string import ascii_lowercase
 from typing import Optional, Any
 
 from aiogram import types
+from aiogram.utils.exceptions import BadRequest
 
-from constants import bot, GAMES, WORDS, GameState, GameSettings
+from constants import bot, on9bot, ON9BOT_ID, GAMES, WORDS, GameState, GameSettings
 
 
 class Player:
-    def __init__(self, user: types.User) -> None:
-        self.user_id = user.id
-        self.name = f"[{user.full_name}](https://t.me/{user.username})" if user.username else f"*{user.full_name}*"
-        self.mention = user.get_mention()
+    def __init__(self, user: Optional[types.User] = None, vp: bool = False) -> None:
+        if vp:  # VP - On9Bot
+            self.user_id = ON9BOT_ID
+            self.name = "[On9Bot](https://t.me/On9Bot)"
+            self.mention = f"[On9Bot](tg://user?id={self.user_id})"
+        else:
+            self.user_id = user.id
+            self.name = f"[{user.full_name}](https://t.me/{user.username})" if user.username else f"*{user.full_name}*"
+            self.mention = user.get_mention()
         self.total_letters = 0  # For elimination game only
 
 
@@ -122,6 +128,29 @@ class ClassicGame:
             self.time_left = min(self.time_left + n, GameSettings.MAX_JOINING_PHASE_SECONDS)
             await message.reply(f"The joining phase has been extended by {n}s.\nYou have {self.time_left}s to /join.")
 
+    async def addvp(self, message: types.Message) -> None:
+        try:
+            vp = await bot.get_chat_member(self.group_id, ON9BOT_ID)
+            assert vp.is_chat_member() or vp.is_chat_admin()
+        except (BadRequest, AssertionError):
+            await self.send_message(f"You must add [On9Bot](tg://user?id={ON9BOT_ID}) before using /addvp.",
+                                    reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                                        types.InlineKeyboardButton("Add On9Bot to this group!",
+                                                                   url="https://t.me/On9Bot?startgroup=_")
+                                    ]]))
+            return
+        if self.state != GameState.JOINING or len(self.players) >= self.max_players:
+            return
+        for p in self.players:
+            if p.user_id == ON9BOT_ID:
+                return
+        await on9bot.send_message(self.group_id, "/join@on9wordchainbot")
+        vp = Player(vp=True)
+        self.players.append(vp)
+        await message.reply(f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
+                            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+                            disable_web_page_preview=True)
+
     async def send_turn_message(self) -> None:
         await self.send_message(
             f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
@@ -134,6 +163,42 @@ class ClassicGame:
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
+        if self.players_in_game[0].user_id != ON9BOT_ID:
+            return
+        await asyncio.sleep(1)
+        li = list(WORDS[self.current_word[-1]])
+        shuffle(li)
+        for word in li:
+            if len(word) >= self.min_letters_limit and word not in self.used_words:
+                await on9bot.send_message(self.group_id, word.capitalize())
+                self.used_words.add(word)
+                self.turns += 1
+                self.current_word = word
+                if len(word) > len(self.longest_word):
+                    self.longest_word = word
+                    self.longest_word_sender_id = ON9BOT_ID
+                text = f"_{word.capitalize()}_ is accepted.\n\n"
+                if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
+                    if self.time_limit > GameSettings.MIN_TURN_SECONDS:
+                        self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
+                        text += (f"Time limit decreased from "
+                                 f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
+                                 f"*{self.time_limit}s*.\n")
+                    if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
+                        self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
+                        text += (
+                            f"Minimum letters per word increased from "
+                            f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
+                            f"to *{self.min_letters_limit}*.\n"
+                        )
+                self.answered = True
+                self.accepting_answers = False
+                await self.send_message(text.rstrip())
+                break
+        else:
+            await on9bot.send_message(self.group_id, "/forceskip I'm done")
+            await asyncio.sleep(1)
+            self.time_left = 0
 
     async def handle_answer(self, message: types.Message) -> None:
         word = message.text.lower()

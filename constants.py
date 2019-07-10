@@ -9,6 +9,10 @@ with open("token.txt") as f:
 bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN)
 dp = Dispatcher(bot)
 BOT_ID = int(TOKEN.partition(":")[0])
+with open("on9bot_token.txt") as f:
+    ON9BOT_TOKEN = f.readline().strip()
+on9bot = Bot(ON9BOT_TOKEN, parse_mode=types.ParseMode.MARKDOWN)
+ON9BOT_ID = int(ON9BOT_TOKEN.partition(":")[0])
 OWNER_ID = 463998526
 ADMIN_GROUP_ID = -1001141544515
 OFFICIAL_GROUP_ID = -1001333598796

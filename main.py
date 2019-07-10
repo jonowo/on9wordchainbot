@@ -30,10 +30,10 @@ async def cmd_start(message: types.Message) -> None:
         "Terms of Service\n\n"
         "0. You must not abuse this bot.\n\n"
         "1. You must report any bugs you encounter to this bot's owner - [Trainer Jono](https://t.me/Trainer_Jono).\n\n"
-        "2. You understand that complains about words being missing from the bot's word list are usually ignored "
-        "since the bot's owner is not responsible for such issues.\n\n"
-        "3. You will forgive the bot's owner in case a game suddenly ends without any notification, usually due to him "
-        "forgetting to check if there were running games before manually terminating the bot's program.\n\n"
+        "2. You understand that complains about words being missing from this bot's word list are usually ignored "
+        "since this bot's owner is not responsible for such issues.\n\n"
+        "3. You will forgive this bot's owner in case a game suddenly ends without any notification, usually due to "
+        "him forgetting to check if there were running games before manually terminating this bot's program.\n\n"
         "By starting this bot, you have agreed to the above terms of service.\n"
         "Add me to a group to start playing games!",
         disable_web_page_preview=True,
@@ -251,8 +251,7 @@ async def cmd_join(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
-        return
-    await message.reply("There is no game running in this group.\nClick /startclassic to start a classic game!")
+    # Due to privacy settings, no reply is given when there is no running game
 
 
 @dp.message_handler(is_group=True, is_owner_or_admin=True, commands="forcejoin")
@@ -302,7 +301,14 @@ async def cmd_killgame(message: types.Message) -> None:
 async def cmd_forceskip(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES and GAMES[group_id].state == GameState.RUNNING and not GAMES[group_id].answered:
-        GAMES[group_id].time_left = -99999
+        GAMES[group_id].time_left = 0
+
+
+@dp.message_handler(is_group=True, commands="addvp")
+async def addvp(message: types.Message) -> None:
+    group_id = message.chat.id
+    if group_id in GAMES and isinstance(GAMES[group_id], ClassicGame):  # When VP is implemented for all modes, remove
+        await GAMES[group_id].addvp(message)
 
 
 @dp.message_handler(is_group=True, is_owner=True, commands="incmaxp")
@@ -352,6 +358,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# TODO: Virtual player - On9 Bot
+# TODO: VP for other modes
+# TODO: Game length for game end msg
 # TODO: Modes: Mixed elimination game and race game based on word length
 # TODO: Support other languages? (e.g. Chinese idioms)
