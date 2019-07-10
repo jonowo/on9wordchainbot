@@ -27,7 +27,16 @@ async def games_group_only(message: types.Message) -> None:
 @dp.message_handler(is_group=False, commands="start")
 async def cmd_start(message: types.Message) -> None:
     await message.reply(
-        "Thanks for starting me. Add me to a group to start playing games!",
+        "Terms of Service\n\n"
+        "0. You must not abuse this bot.\n\n"
+        "1. You must report any bugs you encounter to this bot's owner - [Trainer Jono](https://t.me/Trainer_Jono).\n\n"
+        "2. You understand that complains about words being missing from the bot's word list are usually ignored "
+        "since the bot's owner is not responsible for such issues.\n\n"
+        "3. You will forgive the bot's owner in case a game suddenly ends without any notification, usually due to him "
+        "forgetting to check if there were running games before manually terminating the bot's program.\n\n"
+        "By starting this bot, you have agreed to the above terms of service.\n"
+        "Add me to a group to start playing games!",
+        disable_web_page_preview=True,
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
             types.InlineKeyboardButton("Add me to a group!", url="https://t.me/on9wordchainbot?startgroup=_")
         ]])
@@ -39,18 +48,23 @@ async def added_into_group(message: types.Message) -> None:
     if any([user.id == BOT_ID for user in message.new_chat_members]):
         await message.reply("Thanks for adding me. Click /startclassic to start a classic game!", reply=False)
     elif message.chat.id == OFFICIAL_GROUP_ID:
-        await message.reply("Welcome to the official On9 Word Chain group! "
+        await message.reply("Welcome to the official On9 Word Chain group!\n"
                             "Click /startclassic to start a classic game!")
 
 
 @dp.message_handler(commands="help")
 async def cmd_help(message: types.Message) -> None:
+    if message.chat.id < 0:
+        await message.reply("Please use this command in private.")
+        return
     await message.reply(
         "I provide several variations of the English game _Word Chain_.\n\n"
         "/startclassic - Classic game\n"
         "Players come up with words that begin with the last letter of the previous word. Players unable to come up "
         "with a word in time are eliminated from the game. The time limit decreases and the minimum word length limit "
         "increases throughout the game to level up the difficulty.\n\n"
+        "/starthard - Hard mode game\n"
+        "Classic gameplay but with the most difficult configurations set initially.\n\n"
         "/startchaos - Chaos game\n"
         "Classic gameplay but without turn order, players are selected to answer by random.\n\n"
         "/startcfl - Chosen first letter game\n"
@@ -58,8 +72,8 @@ async def cmd_help(message: types.Message) -> None:
         "/startbl - Banned letters game\n"
         "Classic gameplay but 2-4 letters (incl. max one vowel) are banned and cannot be present in words.\n\n"
         "/startelim - Elimination game\n"
-        "Each player has a score, i.e. their cumulative word length. After each player has played a round, player(s) "
-        "with the lowest score is/are eliminated from the game. Last standing player wins.",
+        "Each player has a score, i.e. their cumulative word length. After each player has played a round, the "
+        "player(s) with the lowest score get eliminated from the game. Last standing player wins.",
         disable_web_page_preview=True
     )
 
@@ -237,6 +251,8 @@ async def cmd_join(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
+        return
+    await message.reply("There is no game running in this group.\nClick /startclassic to start a classic game!")
 
 
 @dp.message_handler(is_group=True, is_owner_or_admin=True, commands="forcejoin")
@@ -336,6 +352,6 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+# TODO: Virtual player - On9 Bot
 # TODO: Modes: Mixed elimination game and race game based on word length
-# TODO: Virtual players?
 # TODO: Support other languages? (e.g. Chinese idioms)
