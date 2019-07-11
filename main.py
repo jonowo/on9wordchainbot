@@ -311,6 +311,13 @@ async def addvp(message: types.Message) -> None:
         await GAMES[group_id].addvp(message)
 
 
+@dp.message_handler(is_group=True, commands="remvp")
+async def remvp(message: types.Message) -> None:
+    group_id = message.chat.id
+    if group_id in GAMES:
+        await GAMES[group_id].remvp(message)
+
+
 @dp.message_handler(is_group=True, is_owner=True, commands="incmaxp")
 async def cmd_incmaxp(message: types.Message) -> None:
     group_id = message.chat.id
@@ -359,6 +366,5 @@ if __name__ == "__main__":
     main()
 
 # TODO: VP for other modes
-# TODO: Game length for game end msg
-# TODO: Modes: Mixed elimination game and race game based on word length
+# TODO: Modes: race game and mixed elimination game based on word length
 # TODO: Support other languages? (e.g. Chinese idioms)

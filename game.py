@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from functools import lru_cache
 from operator import attrgetter
 from random import choice, sample, shuffle, randint
@@ -44,6 +45,7 @@ class ClassicGame:
         self.accepting_answers = False
         self.turns = 0
         self.used_words = set()
+        self.start_time = datetime.now().replace(microsecond=0)
 
     async def send_message(self, *args: Any, **kwargs: Any) -> types.Message:
         return await bot.send_message(self.group_id, *args, disable_web_page_preview=True, **kwargs)
@@ -86,12 +88,14 @@ class ClassicGame:
 
     async def flee(self, message: types.Message) -> None:
         user_id = message.from_user.id
-        if self.state != GameState.JOINING or user_id not in [p.user_id for p in self.players]:
+        if self.state != GameState.JOINING:
             return
         for i in range(len(self.players)):
             if self.players[i].user_id == user_id:
                 player = self.players.pop(i)
                 break
+        else:
+            return
         await message.reply(f"{player.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
                             disable_web_page_preview=True)
@@ -100,12 +104,12 @@ class ClassicGame:
         if self.state != GameState.JOINING or not message.reply_to_message:
             return
         user_id = message.reply_to_message.from_user.id
-        if user_id not in [p.user_id for p in self.players]:
-            return
         for i in range(len(self.players)):
             if self.players[i].user_id == user_id:
                 player = self.players.pop(i)
                 break
+        else:
+            return
         await message.reply(
             f"{player.name} has been fled. There {'is' if len(self.players) == 1 else 'are'} {len(self.players)} "
             f"player{'' if len(self.players) == 1 else 's'}.", disable_web_page_preview=True
@@ -144,10 +148,24 @@ class ClassicGame:
         for p in self.players:
             if p.user_id == ON9BOT_ID:
                 return
-        await on9bot.send_message(self.group_id, "/join@on9wordchainbot")
         vp = Player(vp=True)
         self.players.append(vp)
+        await on9bot.send_message(self.group_id, "/join@on9wordchainbot")
         await message.reply(f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
+                            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+                            disable_web_page_preview=True)
+
+    async def remvp(self, message: types.Message) -> None:
+        if self.state != GameState.JOINING:
+            return
+        for i in range(len(self.players)):
+            if self.players[i].user_id == ON9BOT_ID:
+                vp = self.players.pop(i)
+                break
+        else:
+            return
+        await on9bot.send_message(self.group_id, "/flee@on9wordchainbot")
+        await message.reply(f"{vp.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
                             disable_web_page_preview=True)
 
@@ -255,12 +273,14 @@ class ClassicGame:
             await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!")
             del self.players_in_game[0]
             if len(self.players_in_game) == 1:
+                td = datetime.now().replace(microsecond=0) - self.start_time
                 await self.send_message(
                     f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
                     f"Total words: {self.turns}"
                     + (f"\nLongest word: _{self.longest_word.capitalize()}_ from "
                        f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
                        if self.longest_word else "")
+                    + f"\nGame length: `{str(int(td.total_seconds()) // 3600).zfill(2)}{str(td)[-6:]}`"
                 )
                 del GAMES[self.group_id]
                 return True
