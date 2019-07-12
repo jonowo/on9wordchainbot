@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from random import seed
@@ -105,6 +106,23 @@ async def cmd_runinfo(message: types.Message) -> None:
         f"Running games: `{len([g for g in GAMES.values() if g.state == GameState.RUNNING])}`\n"
         f"Players: `{sum([len(g.players) for g in GAMES.values()])}`"
     )
+
+
+@dp.message_handler(is_owner=True, commands="playinggroups")
+async def cmd_playinggroups(message: types.Message) -> None:
+    if not GAMES:
+        await message.reply("No groups are playing games.")
+        return
+    groups = []
+    for group_id in GAMES:
+        group = await bot.get_chat(group_id)
+        if group.username:
+            groups.append(f"[{group.title}](https://t.me/{group.username})")
+        elif group.invite_link:
+            groups.append(f"[{group.title}]({group.invite_link})")
+        else:
+            groups.append(f"{group.title} {group.id}")
+    await message.reply("\n".join(groups))
 
 
 @dp.message_handler(commands=["exist", "exists"])
@@ -254,7 +272,7 @@ async def cmd_join(message: types.Message) -> None:
     # Due to privacy settings, no reply is given when there is no running game
 
 
-@dp.message_handler(is_group=True, is_owner_or_admin=True, commands="forcejoin")
+@dp.message_handler(is_group=True, is_owner=True, commands="forcejoin")
 async def cmd_forcejoin(message: types.Message) -> None:
     group_id = message.chat.id
     rmsg = message.reply_to_message
@@ -364,7 +382,12 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
     except TelegramAPIError:
         pass
     if update.message.chat.id in GAMES:
-        del GAMES[update.message.chat.id]
+        GAMES[update.message.chat.id].state = GameState.KILLGAME
+        await asyncio.sleep(2)
+        try:
+            del GAMES[update.message.chat.id]
+        except KeyError:
+            return
         try:
             await update.message.reply("Game ended forcibly.")
         except TelegramAPIError:
