@@ -307,7 +307,11 @@ async def cmd_forceskip(message: types.Message) -> None:
 @dp.message_handler(is_group=True, commands="addvp")
 async def addvp(message: types.Message) -> None:
     group_id = message.chat.id
-    if group_id in GAMES and isinstance(GAMES[group_id], ClassicGame):  # When VP is implemented for all modes, remove
+    if group_id in GAMES:
+        if isinstance(GAMES[group_id], EliminationGame):
+            await message.reply("Sorry, [On9Bot](https://t.me/On9Bot) can't play elimination games.",
+                                disable_web_page_preview=True)
+            return
         await GAMES[group_id].addvp(message)
 
 
@@ -342,6 +346,7 @@ async def cmd_leave(message: types.Message) -> None:
 
 
 @dp.message_handler(is_group=True, regexp="^\w+$")
+@dp.edited_message_handler(is_group=True, regexp="^\w+$")
 async def message_handler(message: types.Message) -> None:
     group_id = message.chat.id
     if (group_id in GAMES and GAMES[group_id].players_in_game
@@ -365,6 +370,5 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# TODO: VP for other modes
 # TODO: Modes: race game and mixed elimination game based on word length
 # TODO: Support other languages? (e.g. Chinese idioms)

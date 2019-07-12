@@ -45,7 +45,7 @@ class ClassicGame:
         self.accepting_answers = False
         self.turns = 0
         self.used_words = set()
-        self.start_time = datetime.now().replace(microsecond=0)
+        self.start_time = None
 
     async def send_message(self, *args: Any, **kwargs: Any) -> types.Message:
         return await bot.send_message(self.group_id, *args, disable_web_page_preview=True, **kwargs)
@@ -183,7 +183,6 @@ class ClassicGame:
         self.time_left = self.time_limit
         if self.players_in_game[0].user_id != ON9BOT_ID:
             return
-        await asyncio.sleep(1)
         li = list(WORDS[self.current_word[-1]])
         shuffle(li)
         for word in li:
@@ -259,6 +258,7 @@ class ClassicGame:
         while len(self.current_word) < self.min_letters_limit:
             self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
         self.used_words.add(self.current_word)
+        self.start_time = datetime.now().replace(microsecond=0)
         await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n\n"
                                 "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
 
@@ -343,12 +343,48 @@ class ChaosGame(ClassicGame):
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
+        if self.players_in_game[0].user_id != ON9BOT_ID:
+            return
+        li = list(WORDS[self.current_word[-1]])
+        shuffle(li)
+        for word in li:
+            if len(word) >= self.min_letters_limit and word not in self.used_words:
+                await on9bot.send_message(self.group_id, word.capitalize())
+                self.used_words.add(word)
+                self.turns += 1
+                self.current_word = word
+                if len(word) > len(self.longest_word):
+                    self.longest_word = word
+                    self.longest_word_sender_id = ON9BOT_ID
+                text = f"_{word.capitalize()}_ is accepted.\n\n"
+                if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
+                    if self.time_limit > GameSettings.MIN_TURN_SECONDS:
+                        self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
+                        text += (f"Time limit decreased from "
+                                 f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
+                                 f"*{self.time_limit}s*.\n")
+                    if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
+                        self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
+                        text += (
+                            f"Minimum letters per word increased from "
+                            f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
+                            f"to *{self.min_letters_limit}*.\n"
+                        )
+                self.answered = True
+                self.accepting_answers = False
+                await self.send_message(text.rstrip())
+                break
+        else:
+            await on9bot.send_message(self.group_id, "/forceskip I'm done")
+            await asyncio.sleep(1)
+            self.time_left = 0
 
     async def running_initialization(self) -> None:
         self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
         while len(self.current_word) < self.min_letters_limit:
             self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
         self.used_words.add(self.current_word)
+        self.start_time = datetime.now().replace(microsecond=0)
         await self.send_message(f"The first word is _{self.current_word.capitalize()}_.")
 
     async def running_phase(self) -> Optional[bool]:
@@ -391,6 +427,40 @@ class ChosenFirstLetterGame(ClassicGame):
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
+        if self.players_in_game[0].user_id != ON9BOT_ID:
+            return
+        li = list(WORDS[self.current_word])
+        shuffle(li)
+        for word in li:
+            if len(word) >= self.min_letters_limit and word not in self.used_words:
+                await on9bot.send_message(self.group_id, word.capitalize())
+                self.used_words.add(word)
+                self.turns += 1
+                if len(word) > len(self.longest_word):
+                    self.longest_word = word
+                    self.longest_word_sender_id = ON9BOT_ID
+                text = f"_{word.capitalize()}_ is accepted.\n\n"
+                if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
+                    if self.time_limit > GameSettings.MIN_TURN_SECONDS:
+                        self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
+                        text += (f"Time limit decreased from "
+                                 f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
+                                 f"*{self.time_limit}s*.\n")
+                    if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
+                        self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
+                        text += (
+                            f"Minimum letters per word increased from "
+                            f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
+                            f"to *{self.min_letters_limit}*.\n"
+                        )
+                self.answered = True
+                self.accepting_answers = False
+                await self.send_message(text.rstrip())
+                break
+        else:
+            await on9bot.send_message(self.group_id, "/forceskip I'm done")
+            await asyncio.sleep(1)
+            self.time_left = 0
 
     async def handle_answer(self, message: types.Message) -> None:
         word = message.text.lower()
@@ -429,6 +499,7 @@ class ChosenFirstLetterGame(ClassicGame):
 
     async def running_initialization(self) -> None:
         self.current_word = choice(ascii_lowercase)
+        self.start_time = datetime.now().replace(microsecond=0)
         await self.send_message(f"The chosen first letter is _{self.current_word.upper()}_.\n\n"
                                 "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
 
@@ -453,6 +524,42 @@ class BannedLettersGame(ClassicGame):
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
+        if self.players_in_game[0].user_id != ON9BOT_ID:
+            return
+        li = list(WORDS[self.current_word[-1]])
+        shuffle(li)
+        for word in li:
+            if (len(word) >= self.min_letters_limit and word not in self.used_words
+                    and all([c not in word for c in self.banned_letters])):
+                await on9bot.send_message(self.group_id, word.capitalize())
+                self.used_words.add(word)
+                self.turns += 1
+                self.current_word = word
+                if len(word) > len(self.longest_word):
+                    self.longest_word = word
+                    self.longest_word_sender_id = ON9BOT_ID
+                text = f"_{word.capitalize()}_ is accepted.\n\n"
+                if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
+                    if self.time_limit > GameSettings.MIN_TURN_SECONDS:
+                        self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
+                        text += (f"Time limit decreased from "
+                                 f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
+                                 f"*{self.time_limit}s*.\n")
+                    if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
+                        self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
+                        text += (
+                            f"Minimum letters per word increased from "
+                            f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
+                            f"to *{self.min_letters_limit}*.\n"
+                        )
+                self.answered = True
+                self.accepting_answers = False
+                await self.send_message(text.rstrip())
+                break
+        else:
+            await on9bot.send_message(self.group_id, "/forceskip I'm done")
+            await asyncio.sleep(1)
+            self.time_left = 0
 
     async def handle_answer(self, message: types.Message) -> None:
         word = message.text.lower()
@@ -511,7 +618,7 @@ class BannedLettersGame(ClassicGame):
             self.current_word = sample(WORDS[choice(unbanned)], 1)[0]
             n += 1
         self.used_words.add(self.current_word)
-        print(f"Tried {n} time(s) to find word without letters {', '.join(self.banned_letters)}: {self.current_word}")
+        self.start_time = datetime.now().replace(microsecond=0)
         await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n"
                                 f"Banned letters: _{', '.join(c.upper() for c in self.banned_letters)}_\n\n"
                                 "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
@@ -606,6 +713,7 @@ class EliminationGame(ClassicGame):
         self.turns_until_elimination = len(self.players)
         self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
         self.used_words.add(self.current_word)
+        self.start_time = datetime.now().replace(microsecond=0)
         await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n\n"
                                 "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
         await self.send_message("Round 1 is starting...")
