@@ -359,8 +359,16 @@ async def message_handler(message: types.Message) -> None:
 @dp.errors_handler(exception=TelegramAPIError)
 async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
     await bot.send_message(ADMIN_GROUP_ID, f"`{error.__class__.__name__} @ {update.message.chat.id}`:\n`{str(error)}`")
-    await bot.send_message(update.message.chat.id, "Error occurred. My owner has been notified.",
-                           reply_to_message_id=getattr(update.message, "message_id", None))
+    try:
+        await update.message.reply("Error occurred. My owner has been notified.")
+    except TelegramAPIError:
+        pass
+    if update.message.chat.id in GAMES:
+        del GAMES[update.message.chat.id]
+        try:
+            await update.message.reply("Game ended forcibly.")
+        except TelegramAPIError:
+            pass
 
 
 def main() -> None:
