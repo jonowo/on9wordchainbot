@@ -2,14 +2,14 @@ import asyncio
 from datetime import datetime
 from functools import lru_cache
 from operator import attrgetter
-from random import choice, sample, shuffle, randint
+from random import choice, shuffle, randint
 from string import ascii_lowercase
 from typing import Optional, Any
 
 from aiogram import types
 from aiogram.utils.exceptions import BadRequest
 
-from constants import bot, on9bot, ON9BOT_ID, GAMES, WORDS, GameState, GameSettings
+from constants import bot, on9bot, ON9BOT_ID, GAMES, WORDS, WORDS_LI, GameState, GameSettings
 
 
 class Player:
@@ -183,7 +183,7 @@ class ClassicGame:
         self.time_left = self.time_limit
         if self.players_in_game[0].user_id != ON9BOT_ID:
             return
-        li = list(WORDS[self.current_word[-1]])
+        li = WORDS_LI[self.current_word[-1]][:]
         shuffle(li)
         for word in li:
             if len(word) >= self.min_letters_limit and word not in self.used_words:
@@ -254,9 +254,9 @@ class ClassicGame:
         await self.send_message(text.rstrip())
 
     async def running_initialization(self) -> None:
-        self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
+        self.current_word = choice(WORDS_LI[choice(ascii_lowercase)])
         while len(self.current_word) < self.min_letters_limit:
-            self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
+            self.current_word = choice(WORDS_LI[choice(ascii_lowercase)])
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
         await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n\n"
@@ -345,7 +345,7 @@ class ChaosGame(ClassicGame):
         self.time_left = self.time_limit
         if self.players_in_game[0].user_id != ON9BOT_ID:
             return
-        li = list(WORDS[self.current_word[-1]])
+        li = WORDS_LI[self.current_word[-1]][:]
         shuffle(li)
         for word in li:
             if len(word) >= self.min_letters_limit and word not in self.used_words:
@@ -380,9 +380,9 @@ class ChaosGame(ClassicGame):
             self.time_left = 0
 
     async def running_initialization(self) -> None:
-        self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
+        self.current_word = choice(WORDS_LI[choice(ascii_lowercase)])
         while len(self.current_word) < self.min_letters_limit:
-            self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
+            self.current_word = choice(WORDS_LI[choice(ascii_lowercase)])
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
         await self.send_message(f"The first word is _{self.current_word.capitalize()}_.")
@@ -429,7 +429,7 @@ class ChosenFirstLetterGame(ClassicGame):
         self.time_left = self.time_limit
         if self.players_in_game[0].user_id != ON9BOT_ID:
             return
-        li = list(WORDS[self.current_word])
+        li = WORDS_LI[self.current_word][:]
         shuffle(li)
         for word in li:
             if len(word) >= self.min_letters_limit and word not in self.used_words:
@@ -526,7 +526,7 @@ class BannedLettersGame(ClassicGame):
         self.time_left = self.time_limit
         if self.players_in_game[0].user_id != ON9BOT_ID:
             return
-        li = list(WORDS[self.current_word[-1]])
+        li = WORDS_LI[self.current_word[-1]][:]
         shuffle(li)
         for word in li:
             if (len(word) >= self.min_letters_limit and word not in self.used_words
@@ -566,7 +566,7 @@ class BannedLettersGame(ClassicGame):
         if not word.startswith(self.current_word[-1]):
             await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.")
             return
-        if any([c for c in self.banned_letters if c in word]):
+        if any(c for c in self.banned_letters if c in word):
             await message.reply(f"_{word.capitalize()}_ include banned letters "
                                 f"({', '.join(c.upper() for c in self.banned_letters if c in word)}).")
             return
@@ -612,10 +612,10 @@ class BannedLettersGame(ClassicGame):
         self.banned_letters.sort()
         unbanned = "".join([c for c in ascii_lowercase if c not in self.banned_letters])
         n = 1
-        self.current_word = sample(WORDS[choice(unbanned)], 1)[0]
+        self.current_word = choice(WORDS_LI[choice(unbanned)])
         while (len(self.current_word) < self.min_letters_limit
-               or any([c in self.current_word for c in self.banned_letters])):
-            self.current_word = sample(WORDS[choice(unbanned)], 1)[0]
+               or any(c in self.current_word for c in self.banned_letters)):
+            self.current_word = choice(WORDS_LI[choice(unbanned)])
             n += 1
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
@@ -711,7 +711,7 @@ class EliminationGame(ClassicGame):
 
     async def running_initialization(self) -> None:
         self.turns_until_elimination = len(self.players)
-        self.current_word = sample(WORDS[choice(ascii_lowercase)], 1)[0]
+        self.current_word = choice(WORDS_LI[choice(ascii_lowercase)])
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
         await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n\n"

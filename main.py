@@ -4,11 +4,13 @@ from datetime import datetime
 from random import seed
 from string import ascii_lowercase
 from time import time
+from uuid import uuid4
 
 from aiogram import executor, types
 from aiogram.utils.exceptions import TelegramAPIError
 
-from constants import bot, dp, BOT_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, WORDS, GameState, GameSettings
+from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, WORDS, WORDS_LI,
+                       GameState, GameSettings)
 from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, EliminationGame
 
 seed(time())
@@ -19,7 +21,7 @@ MAINT_MODE = False
 
 async def games_group_only(message: types.Message) -> None:
     await message.reply(
-        "Games are only available in groups.", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+        "You must run this command in a group.", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
             types.InlineKeyboardButton("Add me to a group!", url="https://t.me/on9wordchainbot?startgroup=_")
         ]])
     )
@@ -46,7 +48,7 @@ async def cmd_start(message: types.Message) -> None:
 
 @dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
 async def added_into_group(message: types.Message) -> None:
-    if any([user.id == BOT_ID for user in message.new_chat_members]):
+    if any(user.id == BOT_ID for user in message.new_chat_members):
         await message.reply("Thanks for adding me. Click /startclassic to start a classic game!", reply=False)
     elif message.chat.id == OFFICIAL_GROUP_ID:
         await message.reply("Welcome to the official On9 Word Chain group!\n"
@@ -116,19 +118,18 @@ async def cmd_playinggroups(message: types.Message) -> None:
     groups = []
     for group_id in GAMES:
         group = await bot.get_chat(group_id)
-        if group.username:
-            groups.append(f"[{group.title}](https://t.me/{group.username})")
-        elif group.invite_link:
-            groups.append(f"[{group.title}]({group.invite_link})")
+        url = await group.get_url()
+        if url:
+            groups.append(f"[{group.title}]({url})")
         else:
             groups.append(f"{group.title} {group.id}")
-    await message.reply("\n".join(groups))
+    await message.reply("\n".join(groups), disable_web_page_preview=True)
 
 
 @dp.message_handler(commands=["exist", "exists"])
 async def cmd_exists(message: types.Message) -> None:
     word = message.text.partition(" ")[2].lower()
-    if not word or not all([c in ascii_lowercase for c in word]):
+    if not word or any(c not in ascii_lowercase for c in word):
         rmsg = message.reply_to_message
         if rmsg and rmsg.text and all([c in ascii_lowercase for c in rmsg.text.lower()]):
             word = message.reply_to_message.text.lower()
@@ -276,7 +277,7 @@ async def cmd_join(message: types.Message) -> None:
 async def cmd_forcejoin(message: types.Message) -> None:
     group_id = message.chat.id
     rmsg = message.reply_to_message
-    if group_id in GAMES and rmsg and not rmsg.from_user.is_bot:
+    if group_id in GAMES and rmsg and (not rmsg.from_user.is_bot or rmsg.from_user.id == ON9BOT_ID):
         await GAMES[message.chat.id].forcejoin(message)
 
 
@@ -374,9 +375,66 @@ async def message_handler(message: types.Message) -> None:
         await GAMES[group_id].handle_answer(message)
 
 
+@dp.inline_handler()
+async def inline_handler(inline_query: types.InlineQuery):
+    text = inline_query.query.lower()
+    if inline_query.from_user.id != OWNER_ID or not text:
+        await inline_query.answer([
+            types.InlineQueryResultArticle(
+                id=str(uuid4()), title="Start a classic game", description="/startclassic@on9wordchainbot",
+                input_message_content=types.InputTextMessageContent("/startclassic@on9wordchainbot")
+            ),
+            types.InlineQueryResultArticle(
+                id=str(uuid4()), title="Start a hard mode game", description="/starthard@on9wordchainbot",
+                input_message_content=types.InputTextMessageContent("/starthard@on9wordchainbot")
+            ),
+            types.InlineQueryResultArticle(
+                id=str(uuid4()), title="Start a chaos game", description="/startchaos@on9wordchainbot",
+                input_message_content=types.InputTextMessageContent("/startchaos@on9wordchainbot")
+            ),
+            types.InlineQueryResultArticle(
+                id=str(uuid4()), title="Start a chosen first letter game", description="/startcfl@on9wordchainbot",
+                input_message_content=types.InputTextMessageContent("/startcfl@on9wordchainbot")
+            ),
+            types.InlineQueryResultArticle(
+                id=str(uuid4()), title="Start a banned letters game", description="/startbl@on9wordchainbot",
+                input_message_content=types.InputTextMessageContent("/startbl@on9wordchainbot")
+            ),
+            types.InlineQueryResultArticle(
+                id=str(uuid4()), title="Start an elimination game", description="/startelim@on9wordchainbot",
+                input_message_content=types.InputTextMessageContent("/startelim@on9wordchainbot")
+            )
+        ], is_personal=True)
+        return
+    if any(c not in ascii_lowercase for c in text):
+        await inline_query.answer([types.InlineQueryResultArticle(
+            id=str(uuid4()), title="A query may only consist of alphabets", description="Try a different query",
+            input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯")
+        )], is_personal=True)
+        return
+    res = []
+    for i in WORDS_LI[text[0]]:
+        if i.startswith(text):
+            res.append(types.InlineQueryResultArticle(id=str(uuid4()), title=i,
+                                                      input_message_content=types.InputTextMessageContent(i)))
+            if len(res) == 50:
+                break
+    if not res:
+        res.append(types.InlineQueryResultArticle(
+            id=str(uuid4()), title="No results found", description="Try a different query",
+            input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯")
+        ))
+    await inline_query.answer(res, is_personal=True)
+
+
 @dp.errors_handler(exception=TelegramAPIError)
 async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
-    await bot.send_message(ADMIN_GROUP_ID, f"`{error.__class__.__name__} @ {update.message.chat.id}`:\n`{str(error)}`")
+    await bot.send_message(ADMIN_GROUP_ID,
+                           f"`{error.__class__.__name__} @ "
+                           f"{update.message.chat.id if update.message and update.message.chat else 'idk'}`:\n"
+                           f"`{str(error)}`")
+    if not update.message or not update.message.chat:
+        return
     try:
         await update.message.reply("Error occurred. My owner has been notified.")
     except TelegramAPIError:
@@ -386,11 +444,8 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
         await asyncio.sleep(2)
         try:
             del GAMES[update.message.chat.id]
-        except KeyError:
-            return
-        try:
             await update.message.reply("Game ended forcibly.")
-        except TelegramAPIError:
+        except (KeyError, TelegramAPIError):
             pass
 
 
@@ -402,4 +457,3 @@ if __name__ == "__main__":
     main()
 
 # TODO: Modes: race game and mixed elimination game based on word length
-# TODO: Support other languages? (e.g. Chinese idioms)

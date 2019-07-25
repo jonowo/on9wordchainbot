@@ -18,11 +18,12 @@ ADMIN_GROUP_ID = -1001141544515
 OFFICIAL_GROUP_ID = -1001333598796
 GAMES = {}
 
-WORDS = {i: set() for i in ascii_lowercase}
-words_li = requests.get("https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt").text.splitlines()
-for i in words_li:
-    WORDS[i[0]].add(i)
-del words_li
+WORDS_LI = {i: [] for i in ascii_lowercase}
+w = requests.get("https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt").text.splitlines()
+for i in w:
+    WORDS_LI[i[0]].append(i)
+WORDS = {i: set(WORDS_LI[i]) for i in ascii_lowercase}
+del w
 
 
 class GameState:
