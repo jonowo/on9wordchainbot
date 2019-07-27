@@ -71,11 +71,11 @@ class OwnerFilter(BoundFilter):
         return message.from_user.id == OWNER_ID
 
 
-class OwnerOrAdminFilter(BoundFilter):
-    key = "is_owner_or_admin"
+class AdminFilter(BoundFilter):
+    key = "is_admin"
 
-    def __init__(self, is_owner_or_admin: bool) -> None:
-        self.is_owner_or_admin = is_owner_or_admin
+    def __init__(self, is_admin: bool) -> None:
+        self.is_admin = is_admin
 
     async def check(self, message: types.Message) -> bool:
         return (message.from_user.id == OWNER_ID
@@ -84,4 +84,4 @@ class OwnerOrAdminFilter(BoundFilter):
 
 dp.filters_factory.bind(GroupFilter)
 dp.filters_factory.bind(OwnerFilter)
-dp.filters_factory.bind(OwnerOrAdminFilter)
+dp.filters_factory.bind(AdminFilter)

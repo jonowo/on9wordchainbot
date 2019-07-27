@@ -288,7 +288,7 @@ async def cmd_extend(message: types.Message) -> None:
         await GAMES[group_id].extend(message)
 
 
-@dp.message_handler(is_group=True, is_owner_or_admin=True, commands="forcestart")
+@dp.message_handler(is_group=True, is_admin=True, commands="forcestart")
 async def cmd_forcestart(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES and GAMES[group_id].state == GameState.JOINING:
@@ -404,7 +404,7 @@ async def inline_handler(inline_query: types.InlineQuery):
                 id=str(uuid4()), title="Start an elimination game", description="/startelim@on9wordchainbot",
                 input_message_content=types.InputTextMessageContent("/startelim@on9wordchainbot")
             )
-        ], is_personal=True)
+        ], is_personal=not text)
         return
     if any(c not in ascii_lowercase for c in text):
         await inline_query.answer([types.InlineQueryResultArticle(
@@ -415,6 +415,7 @@ async def inline_handler(inline_query: types.InlineQuery):
     res = []
     for i in WORDS_LI[text[0]]:
         if i.startswith(text):
+            i = i.capitalize()
             res.append(types.InlineQueryResultArticle(id=str(uuid4()), title=i,
                                                       input_message_content=types.InputTextMessageContent(i)))
             if len(res) == 50:
