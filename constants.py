@@ -1,12 +1,15 @@
+import asyncio
 from string import ascii_lowercase
 
+import asyncpg
 import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.dispatcher.filters import BoundFilter
 
+loop = asyncio.get_event_loop()
 with open("token.txt") as f:
     TOKEN = f.readline().strip()
-bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN)
+bot = Bot(TOKEN, loop, parse_mode=types.ParseMode.MARKDOWN)
 dp = Dispatcher(bot)
 BOT_ID = int(TOKEN.partition(":")[0])
 with open("on9bot_token.txt") as f:
@@ -17,13 +20,26 @@ OWNER_ID = 463998526
 ADMIN_GROUP_ID = -1001141544515
 OFFICIAL_GROUP_ID = -1001333598796
 GAMES = {}
+with open("dburi.txt") as f:
+    DB_URI = f.readline().strip()
+conn = None
 
+print("Fetching list of words...")
 WORDS_LI = {i: [] for i in ascii_lowercase}
 w = requests.get("https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt").text.splitlines()
 for i in w:
     WORDS_LI[i[0]].append(i)
 WORDS = {i: set(WORDS_LI[i]) for i in ascii_lowercase}
 del w
+
+
+async def f():
+    print("Connecting to database...")
+    global conn
+    conn = await asyncpg.connect(DB_URI)
+
+
+loop.run_until_complete(f())
 
 
 class GameState:

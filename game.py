@@ -9,7 +9,7 @@ from typing import Optional, Any
 from aiogram import types
 from aiogram.utils.exceptions import BadRequest
 
-from constants import bot, on9bot, ON9BOT_ID, GAMES, WORDS, WORDS_LI, GameState, GameSettings
+from constants import bot, on9bot, ON9BOT_ID, GAMES, conn, WORDS, WORDS_LI, GameState, GameSettings
 
 
 class Player:
@@ -22,7 +22,9 @@ class Player:
             self.user_id = user.id
             self.name = f"[{user.full_name}](https://t.me/{user.username})" if user.username else f"*{user.full_name}*"
             self.mention = user.get_mention()
-        self.total_letters = 0  # For elimination game only
+        self.word_count = 0
+        self.letter_count = 0
+        self.longest_word = ""
 
 
 class ClassicGame:
@@ -46,6 +48,7 @@ class ClassicGame:
         self.turns = 0
         self.used_words = set()
         self.start_time = None
+        self.end_time = None
 
     async def send_message(self, *args: Any, **kwargs: Any) -> types.Message:
         return await bot.send_message(self.group_id, *args, disable_web_page_preview=True, **kwargs)
@@ -190,10 +193,13 @@ class ClassicGame:
                 await on9bot.send_message(self.group_id, word.capitalize())
                 self.used_words.add(word)
                 self.turns += 1
+                self.players_in_game[0].word_count += 1
+                self.players_in_game[0].letter_count += len(word)
                 self.current_word = word
                 if len(word) > len(self.longest_word):
                     self.longest_word = word
                     self.longest_word_sender_id = ON9BOT_ID
+                self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
                 text = f"_{word.capitalize()}_ is accepted.\n\n"
                 if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
                     if self.time_limit > GameSettings.MIN_TURN_SECONDS:
@@ -233,10 +239,13 @@ class ClassicGame:
             return
         self.used_words.add(word)
         self.turns += 1
+        self.players_in_game[0].word_count += 1
+        self.players_in_game[0].letter_count += len(word)
         self.current_word = word
         if len(word) > len(self.longest_word):
             self.longest_word = word
             self.longest_word_sender_id = message.from_user.id
+        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
         text = f"_{word.capitalize()}_ is accepted.\n\n"
         if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
             if self.time_limit > GameSettings.MIN_TURN_SECONDS:
@@ -273,7 +282,8 @@ class ClassicGame:
             await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!")
             del self.players_in_game[0]
             if len(self.players_in_game) == 1:
-                td = datetime.now().replace(microsecond=0) - self.start_time
+                self.end_time = datetime.now().replace(microsecond=0)
+                td = self.end_time - self.start_time
                 await self.send_message(
                     f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
                     f"Total words: {self.turns}"
@@ -285,6 +295,41 @@ class ClassicGame:
                 del GAMES[self.group_id]
                 return True
         await self.send_turn_message()
+
+    async def update_db(self) -> None:
+        async with conn.transaction():
+            await conn.execute("""\
+INSERT INTO game (group_id, winner, start_time, end_time)
+VALUES
+    ($1, $2, $3, $4);""",
+                               self.group_id, self.players_in_game[0].user_id if self.players_in_game else None,
+                               self.start_time, self.end_time)
+            game_id = (await conn.fetchrow("SELECT id FROM game WHERE group_id = $1 AND start_time = $2",
+                                           self.group_id, self.start_time))["id"]
+            for p in self.players:
+                await conn.execute("""\
+INSERT INTO player (user_id, game_count, win_count, word_count, letter_count, longest_word)
+VALUES
+    ($1, 1, $2, $3, $4, $5)
+ON CONFLICT (user_id)
+DO UPDATE
+    SET game_count = player.game_count + 1,
+        win_count = player.win_count + EXCLUDED.win_count,
+        word_count = player.word_count + EXCLUDED.word_count,
+        letter_count = player.letter_count + EXCLUDED.letter_count,
+        longest_word = CASE WHEN player.longest_word IS NULL THEN EXCLUDED.longest_word
+                            WHEN EXCLUDED.longest_word IS NULL THEN player.longest_word
+                            WHEN LENGTH(EXCLUDED.longest_word) > LENGTH(player.longest_word) THEN EXCLUDED.longest_word
+                            ELSE player.longest_word
+                       END;""",
+                                   p.user_id, int(p in self.players_in_game),
+                                   p.word_count, p.letter_count, p.longest_word or None)
+                await conn.execute("""\
+INSERT INTO gameplayer (user_id, group_id, game_id, won, word_count, letter_count, longest_word)
+VALUES
+    ($1, $2, $3, $4, $5, $6, $7);""",
+                                   p.user_id, self.group_id, game_id, p in self.players_in_game,
+                                   p.word_count, p.letter_count, p.longest_word or None)
 
     async def main_loop(self, message: types.Message) -> None:
         await self.send_message(f"A{'n' if self.name[0] in 'aeiou' else ''} {self.name} is starting.\n"
@@ -312,6 +357,7 @@ class ClassicGame:
                         await self.send_turn_message()
             elif self.state == GameState.RUNNING:
                 if await self.running_phase():
+                    await self.update_db()
                     return
             elif self.state == GameState.KILLGAME:
                 await self.send_message("Game ended forcibly.")
@@ -352,6 +398,8 @@ class ChaosGame(ClassicGame):
                 await on9bot.send_message(self.group_id, word.capitalize())
                 self.used_words.add(word)
                 self.turns += 1
+                self.players_in_game[0].word_count += 1
+                self.players_in_game[0].letter_count += len(word)
                 self.current_word = word
                 if len(word) > len(self.longest_word):
                     self.longest_word = word
@@ -436,9 +484,12 @@ class ChosenFirstLetterGame(ClassicGame):
                 await on9bot.send_message(self.group_id, word.capitalize())
                 self.used_words.add(word)
                 self.turns += 1
+                self.players_in_game[0].word_count += 1
+                self.players_in_game[0].letter_count += len(word)
                 if len(word) > len(self.longest_word):
                     self.longest_word = word
                     self.longest_word_sender_id = ON9BOT_ID
+                self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
                 text = f"_{word.capitalize()}_ is accepted.\n\n"
                 if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
                     if self.time_limit > GameSettings.MIN_TURN_SECONDS:
@@ -478,9 +529,12 @@ class ChosenFirstLetterGame(ClassicGame):
             return
         self.used_words.add(word)
         self.turns += 1
+        self.players_in_game[0].word_count += 1
+        self.players_in_game[0].letter_count += len(word)
         if len(word) > len(self.longest_word):
             self.longest_word = word
             self.longest_word_sender_id = message.from_user.id
+        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
         text = f"_{word.capitalize()}_ is accepted.\n\n"
         if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
             if self.time_limit > GameSettings.MIN_TURN_SECONDS:
@@ -534,10 +588,13 @@ class BannedLettersGame(ClassicGame):
                 await on9bot.send_message(self.group_id, word.capitalize())
                 self.used_words.add(word)
                 self.turns += 1
+                self.players_in_game[0].word_count += 1
+                self.players_in_game[0].letter_count += len(word)
                 self.current_word = word
                 if len(word) > len(self.longest_word):
                     self.longest_word = word
                     self.longest_word_sender_id = ON9BOT_ID
+                self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
                 text = f"_{word.capitalize()}_ is accepted.\n\n"
                 if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
                     if self.time_limit > GameSettings.MIN_TURN_SECONDS:
@@ -582,9 +639,12 @@ class BannedLettersGame(ClassicGame):
         self.used_words.add(word)
         self.turns += 1
         self.current_word = word
+        self.players_in_game[0].word_count += 1
+        self.players_in_game[0].letter_count += len(word)
         if len(word) > len(self.longest_word):
             self.longest_word = word
             self.longest_word_sender_id = message.from_user.id
+        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
         text = f"_{word.capitalize()}_ is accepted.\n\n"
         if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
             if self.time_limit > GameSettings.MIN_TURN_SECONDS:
@@ -643,36 +703,36 @@ class EliminationGame(ClassicGame):
 
     def get_leaderboard(self, show_player: Optional[Player] = None) -> str:
         players = self.players_in_game[:]
-        players.sort(key=attrgetter("total_letters"), reverse=True)
+        players.sort(key=attrgetter("letter_count"), reverse=True)
         text = ""
         if show_player:
             if len(players) <= 10:
                 for i, p in enumerate(players, start=1):
-                    t = f"{i}. {p.name}: {p.total_letters}\n"
+                    t = f"{i}. {p.name}: {p.letter_count}\n"
                     if p == show_player:
                         t = "> " + t
                     text += t
             elif players.index(show_player) <= 5 or players.index(show_player) >= len(players) - 4:
                 for i, p in enumerate(players[:5], start=1):
-                    t = f"{i}. {p.name}: {p.total_letters}\n"
+                    t = f"{i}. {p.name}: {p.letter_count}\n"
                     if p == show_player:
                         t = "> " + t
                     text += t
                 text += "...\n"
                 for i, p in enumerate(players[-5:], start=len(players) - 4):
-                    t = f"{i}. {p.name}: {p.total_letters}\n"
+                    t = f"{i}. {p.name}: {p.letter_count}\n"
                     if p == show_player:
                         t = "> " + t
                     text += t
             else:
                 for i, p in enumerate(players[:5], start=1):
-                    text += f"{i}. {p.name}: {p.total_letters}\n"
-                text += f"...\n> {players.index(show_player) + 1}. {show_player.name}: {p.total_letters}\n...\n"
+                    text += f"{i}. {p.name}: {p.letter_count}\n"
+                text += f"...\n> {players.index(show_player) + 1}. {show_player.name}: {p.letter_count}\n...\n"
                 for i, p in enumerate(players[-5:], start=len(players) - 4):
-                    text += f"{i}. {p.name}: {p.total_letters}\n"
+                    text += f"{i}. {p.name}: {p.letter_count}\n"
         else:
             for i, p in enumerate(players, start=1):
-                text += f"{i}. {p.name}: {p.total_letters}\n"
+                text += f"{i}. {p.name}: {p.letter_count}\n"
         return text[:-1]
 
     async def send_turn_message(self) -> None:
@@ -700,11 +760,13 @@ class EliminationGame(ClassicGame):
             return
         self.used_words.add(word)
         self.turns += 1
-        self.players_in_game[0].total_letters += len(word)
+        self.players_in_game[0].word_count += 1
+        self.players_in_game[0].letter_count += len(word)
         self.current_word = word
         if len(word) > len(self.longest_word):
             self.longest_word = word
             self.longest_word_sender_id = message.from_user.id
+        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
         self.answered = True
         self.accepting_answers = False
         await self.send_message(f"_{word.capitalize()}_ is accepted.")
@@ -728,8 +790,8 @@ class EliminationGame(ClassicGame):
         self.players_in_game.append(self.players_in_game.pop(0))
         self.turns_until_elimination -= 1
         if not self.turns_until_elimination:
-            min_score = min(p.total_letters for p in self.players_in_game)
-            eliminated = [p for p in self.players_in_game if p.total_letters == min_score]
+            min_score = min(p.letter_count for p in self.players_in_game)
+            eliminated = [p for p in self.players_in_game if p.letter_count == min_score]
             await self.send_message(
                 f"Round {self.round} completed.\n\nLeaderboard:\n" + self.get_leaderboard() + "\n\n"
                 + ", ".join(p.mention for p in eliminated) + " " + ("is" if len(eliminated) == 1 else "are")

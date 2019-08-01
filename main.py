@@ -7,10 +7,10 @@ from time import time
 from uuid import uuid4
 
 from aiogram import executor, types
-from aiogram.utils.exceptions import TelegramAPIError
+from aiogram.utils.exceptions import TelegramAPIError, BadRequest
 
-from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, WORDS, WORDS_LI,
-                       GameState, GameSettings)
+from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, conn, WORDS,
+                       WORDS_LI, GameState, GameSettings)
 from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, EliminationGame
 
 seed(time())
@@ -278,6 +278,10 @@ async def cmd_forcejoin(message: types.Message) -> None:
     group_id = message.chat.id
     rmsg = message.reply_to_message
     if group_id in GAMES and rmsg and (not rmsg.from_user.is_bot or rmsg.from_user.id == ON9BOT_ID):
+        if rmsg.from_user.id == ON9BOT_ID and isinstance(GAMES[group_id], EliminationGame):
+            await message.reply("Sorry, [On9Bot](https://t.me/On9Bot) can't play elimination games.",
+                                disable_web_page_preview=True)
+            return
         await GAMES[message.chat.id].forcejoin(message)
 
 
@@ -364,6 +368,28 @@ async def cmd_leave(message: types.Message) -> None:
     await message.chat.leave()
 
 
+@dp.message_handler(is_group=True, commands="stats")
+async def cmd_stats(message: types.Message) -> None:
+    rmsg = message.reply_to_message
+    if (message.chat.id < 0 and not message.get_command().partition("@")[2]
+            and (not rmsg or rmsg.from_user.id != BOT_ID)):
+        return
+    user = rmsg.forward_from or rmsg.from_user if rmsg else message.from_user
+    async with conn.transaction():
+        res = await conn.fetchrow("SELECT * FROM player WHERE user_id = $1;", user.id)
+        if not res:
+            await message.reply(f"No statistics for [{user.full_name}](tg://user?id={user.id})!")
+            return
+        await message.reply(
+            f"Statistics for [{user.full_name}](tg://user?id={user.id}):\n"
+            f"*{res['game_count']}* games played\n"
+            f"*{res['win_count']} ({format(res['win_count'] / res['game_count'], '.0%')})* games won\n"
+            f"*{res['word_count']}* total words used\n"
+            f"*{res['letter_count']}* total letters used"
+            + (f"\nLongest word used: *{res['longest_word'].capitalize()}*" if res["longest_word"] else "")
+        )
+
+
 @dp.message_handler(is_group=True, regexp="^\w+$")
 @dp.edited_message_handler(is_group=True, regexp="^\w+$")
 async def message_handler(message: types.Message) -> None:
@@ -430,6 +456,8 @@ async def inline_handler(inline_query: types.InlineQuery):
 
 @dp.errors_handler(exception=TelegramAPIError)
 async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
+    if error.__class__ == BadRequest and str(error) == "Reply message not found":
+        return
     await bot.send_message(ADMIN_GROUP_ID,
                            f"`{error.__class__.__name__} @ "
                            f"{update.message.chat.id if update.message and update.message.chat else 'idk'}`:\n"
@@ -457,4 +485,6 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+# TODO: Make PreparedStatements for SQL code
+# TODO: /sql
 # TODO: Modes: race game and mixed elimination game based on word length
