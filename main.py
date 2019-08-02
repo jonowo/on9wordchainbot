@@ -9,7 +9,7 @@ from uuid import uuid4
 from aiogram import executor, types
 from aiogram.utils.exceptions import TelegramAPIError, BadRequest
 
-from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, conn, WORDS,
+from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool, WORDS,
                        WORDS_LI, GameState, GameSettings)
 from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, EliminationGame
 
@@ -372,21 +372,41 @@ async def cmd_leave(message: types.Message) -> None:
 async def cmd_stats(message: types.Message) -> None:
     rmsg = message.reply_to_message
     if (message.chat.id < 0 and not message.get_command().partition("@")[2]
-            and (not rmsg or rmsg.from_user.id != BOT_ID)):
+            and (not rmsg or rmsg.from_user.id != BOT_ID)
+            or rmsg and rmsg.from_user.is_bot and rmsg.from_user.id != BOT_ID):
         return
     user = rmsg.forward_from or rmsg.from_user if rmsg else message.from_user
-    async with conn.transaction():
+    async with pool.acquire() as conn:
         res = await conn.fetchrow("SELECT * FROM player WHERE user_id = $1;", user.id)
-        if not res:
-            await message.reply(f"No statistics for [{user.full_name}](tg://user?id={user.id})!")
-            return
+    if not res:
+        await message.reply(f"No statistics for [{user.full_name}](tg://user?id={user.id})!")
+        return
+    await message.reply(
+        f"Statistics for [{user.full_name}](tg://user?id={user.id}):\n"
+        f"*{res['game_count']}* games played\n"
+        f"*{res['win_count']} ("
+        f"{'0%' if res['game_count'] == res['win_count'] == 0 else format(res['win_count'] / res['game_count'], '.0%')}"
+        ")* games won\n"
+        f"*{res['word_count']}* total words played\n"
+        f"*{res['letter_count']}* total letters played"
+        + (f"\nLongest word used: *{res['longest_word'].capitalize()}*" if res["longest_word"] else "")
+    )
+
+
+@dp.message_handler(is_group=True, commands="globalstats")
+async def cmd_globalstats(message: types.Message) -> None:
+    async with pool.acquire() as conn:
+        group_count, game_count = await conn.fetchrow("SELECT COUNT(DISTINCT game.group_id), COUNT(game.*) FROM game;")
+        player_count, word_count, letter_count = await conn.fetchrow(
+            "SELECT COUNT(player.*), SUM(player.word_count), SUM(player.letter_count) FROM player;"
+        )
         await message.reply(
-            f"Statistics for [{user.full_name}](tg://user?id={user.id}):\n"
-            f"*{res['game_count']}* games played\n"
-            f"*{res['win_count']} ({format(res['win_count'] / res['game_count'], '.0%')})* games won\n"
-            f"*{res['word_count']}* total words used\n"
-            f"*{res['letter_count']}* total letters used"
-            + (f"\nLongest word used: *{res['longest_word'].capitalize()}*" if res["longest_word"] else "")
+            "Global statistics\n"
+            f"*{group_count}* total groups\n"
+            f"*{player_count}* total players\n"
+            f"*{game_count}* games played\n"
+            f"*{word_count}* total words played\n"
+            f"*{letter_count}* total letters played"
         )
 
 
@@ -485,6 +505,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+# TODO: /groupstats
 # TODO: Make PreparedStatements for SQL code
 # TODO: /sql
 # TODO: Modes: race game and mixed elimination game based on word length

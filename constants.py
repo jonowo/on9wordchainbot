@@ -22,7 +22,7 @@ OFFICIAL_GROUP_ID = -1001333598796
 GAMES = {}
 with open("dburi.txt") as f:
     DB_URI = f.readline().strip()
-conn = None
+pool = None
 
 print("Fetching list of words...")
 WORDS_LI = {i: [] for i in ascii_lowercase}
@@ -35,8 +35,8 @@ del w
 
 async def f():
     print("Connecting to database...")
-    global conn
-    conn = await asyncpg.connect(DB_URI)
+    global pool
+    pool = await asyncpg.create_pool(DB_URI)
 
 
 loop.run_until_complete(f())

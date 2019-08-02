@@ -9,7 +9,7 @@ from typing import Optional, Any
 from aiogram import types
 from aiogram.utils.exceptions import BadRequest
 
-from constants import bot, on9bot, ON9BOT_ID, GAMES, conn, WORDS, WORDS_LI, GameState, GameSettings
+from constants import bot, on9bot, ON9BOT_ID, GAMES, pool, WORDS, WORDS_LI, GameState, GameSettings
 
 
 class Player:
@@ -71,6 +71,12 @@ class ClassicGame:
                             disable_web_page_preview=True)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
+        async with pool.acquire() as conn:
+            if not await conn.fetchval("SELECT id FROM player WHERE user_id = $1", user.id):
+                await conn.execute("""\
+INSERT INTO player (user_id, game_count, win_count, word_count, letter_count)
+VALUES
+    ($1, 0, 0, 0, 0)""", user.id)
 
     async def forcejoin(self, message: types.Message) -> None:
         if self.state == GameState.KILLGAME or len(self.players) >= self.max_players:
@@ -88,6 +94,12 @@ class ClassicGame:
                             disable_web_page_preview=True)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
+        async with pool.acquire() as conn:
+            if not await conn.fetchval("SELECT id FROM player WHERE user_id = $1", user.id):
+                await conn.execute("""\
+INSERT INTO player (user_id, game_count, win_count, word_count, letter_count)
+VALUES
+($1, 0, 0, 0, 0)""", user.id)
 
     async def flee(self, message: types.Message) -> None:
         user_id = message.from_user.id
@@ -140,7 +152,8 @@ class ClassicGame:
             vp = await bot.get_chat_member(self.group_id, ON9BOT_ID)
             assert vp.is_chat_member() or vp.is_chat_admin()
         except (BadRequest, AssertionError):
-            await self.send_message(f"You must add [On9Bot](tg://user?id={ON9BOT_ID}) before using /addvp.",
+            await self.send_message(f"You have to add [On9Bot](tg://user?id={ON9BOT_ID}) "
+                                    "into this group before using /addvp.",
                                     reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
                                         types.InlineKeyboardButton("Add On9Bot to this group!",
                                                                    url="https://t.me/On9Bot?startgroup=_")
@@ -157,6 +170,14 @@ class ClassicGame:
         await message.reply(f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
                             disable_web_page_preview=True)
+        if len(self.players) >= self.max_players:
+            self.time_left = -99999
+        async with pool.acquire() as conn:
+            if not await conn.fetchval("SELECT id FROM player WHERE user_id = $1", ON9BOT_ID):
+                await conn.execute("""\
+INSERT INTO player (user_id, game_count, win_count, word_count, letter_count)
+VALUES
+    ($1, 0, 0, 0, 0)""", ON9BOT_ID)
 
     async def remvp(self, message: types.Message) -> None:
         if self.state != GameState.JOINING:
@@ -297,33 +318,31 @@ class ClassicGame:
         await self.send_turn_message()
 
     async def update_db(self) -> None:
-        async with conn.transaction():
+        async with pool.acquire() as conn:
             await conn.execute("""\
-INSERT INTO game (group_id, winner, start_time, end_time)
+INSERT INTO game (group_id, players, game_mode, winner, start_time, end_time)
 VALUES
-    ($1, $2, $3, $4);""",
-                               self.group_id, self.players_in_game[0].user_id if self.players_in_game else None,
+    ($1, $2, $3, $4, $5, $6);""",
+                               self.group_id, len(self.players), self.__class__.__name__,
+                               self.players_in_game[0].user_id if self.players_in_game else None,
                                self.start_time, self.end_time)
-            game_id = (await conn.fetchrow("SELECT id FROM game WHERE group_id = $1 AND start_time = $2",
-                                           self.group_id, self.start_time))["id"]
+            game_id = await conn.fetchval("SELECT id FROM game WHERE group_id = $1 AND start_time = $2",
+                                          self.group_id, self.start_time)
             for p in self.players:
                 await conn.execute("""\
-INSERT INTO player (user_id, game_count, win_count, word_count, letter_count, longest_word)
-VALUES
-    ($1, 1, $2, $3, $4, $5)
-ON CONFLICT (user_id)
-DO UPDATE
-    SET game_count = player.game_count + 1,
-        win_count = player.win_count + EXCLUDED.win_count,
-        word_count = player.word_count + EXCLUDED.word_count,
-        letter_count = player.letter_count + EXCLUDED.letter_count,
-        longest_word = CASE WHEN player.longest_word IS NULL THEN EXCLUDED.longest_word
-                            WHEN EXCLUDED.longest_word IS NULL THEN player.longest_word
-                            WHEN LENGTH(EXCLUDED.longest_word) > LENGTH(player.longest_word) THEN EXCLUDED.longest_word
-                            ELSE player.longest_word
-                       END;""",
-                                   p.user_id, int(p in self.players_in_game),
-                                   p.word_count, p.letter_count, p.longest_word or None)
+UPDATE player
+SET game_count = game_count + 1,
+    win_count = win_count + $1,
+    word_count = word_count + $2,
+    letter_count = letter_count + $3,
+    longest_word = CASE WHEN longest_word IS NULL THEN $4::TEXT
+                        WHEN $4::TEXT IS NULL THEN longest_word
+                        WHEN LENGTH($4::TEXT) > LENGTH(longest_word) THEN $4::TEXT
+                        ELSE longest_word
+                   END
+WHERE user_id = $5;""",
+                                   int(p in self.players_in_game),
+                                   p.word_count, p.letter_count, p.longest_word or None, p.user_id)
                 await conn.execute("""\
 INSERT INTO gameplayer (user_id, group_id, game_id, won, word_count, letter_count, longest_word)
 VALUES
@@ -447,12 +466,15 @@ class ChaosGame(ClassicGame):
             await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!")
             del self.players_in_game[0]
             if len(self.players_in_game) == 1:
+                self.end_time = datetime.now().replace(microsecond=0)
+                td = self.end_time - self.start_time
                 await self.send_message(
                     f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
-                    f"Unique words: {self.turns}" +
-                    (f"\nLongest word: _{self.longest_word.capitalize()}_ from "
-                     f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
-                     if self.longest_word else "")
+                    f"Total words: {self.turns}"
+                    + (f"\nLongest word: _{self.longest_word.capitalize()}_ from "
+                       f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
+                       if self.longest_word else "")
+                    + f"\nGame length: `{str(int(td.total_seconds()) // 3600).zfill(2)}{str(td)[-6:]}`"
                 )
                 del GAMES[self.group_id]
                 return True
@@ -799,12 +821,16 @@ class EliminationGame(ClassicGame):
             )
             self.players_in_game = [p for p in self.players_in_game if p not in eliminated]
             if len(self.players_in_game) <= 1:
+                self.end_time = datetime.now().replace(microsecond=0)
+                td = self.end_time - self.start_time
                 await self.send_message(
                     f"{(self.players_in_game[0].mention if self.players_in_game else 'No one')} won the game out of "
-                    f"{len(self.players)} players!\nTotal words: {self.turns}"
+                    f"{len(self.players)} players!\n"
+                    f"Total words: {self.turns}"
                     + (f"\nLongest word: _{self.longest_word.capitalize()}_ from "
                        f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
                        if self.longest_word else "")
+                    + f"\nGame length: `{str(int(td.total_seconds()) // 3600).zfill(2)}{str(td)[-6:]}`"
                 )
                 del GAMES[self.group_id]
                 return True
