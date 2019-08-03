@@ -372,8 +372,7 @@ async def cmd_leave(message: types.Message) -> None:
 async def cmd_stats(message: types.Message) -> None:
     rmsg = message.reply_to_message
     if (message.chat.id < 0 and not message.get_command().partition("@")[2]
-            and (not rmsg or rmsg.from_user.id != BOT_ID)
-            or rmsg and rmsg.from_user.is_bot and rmsg.from_user.id != BOT_ID):
+            or rmsg and rmsg.from_user.is_bot and rmsg.from_user.id != ON9BOT_ID):
         return
     user = rmsg.forward_from or rmsg.from_user if rmsg else message.from_user
     async with pool.acquire() as conn:
@@ -393,21 +392,50 @@ async def cmd_stats(message: types.Message) -> None:
     )
 
 
-@dp.message_handler(is_group=True, commands="globalstats")
+@dp.message_handler(is_group=True, commands="groupstats")
+async def cmd_groupstats(message: types.Message) -> None:
+    async with pool.acquire() as conn:
+        player_count, game_count, word_count, letter_count = await conn.fetchrow("""\
+SELECT COUNT(DISTINCT user_id), COUNT(DISTINCT game_id), SUM(word_count), SUM(letter_count)
+FROM gameplayer
+WHERE group_id = $1;""", message.chat.id)
+    await message.reply(
+        "Group statistics\n"
+        f"*{player_count}* total players\n"
+        f"*{game_count}* games played\n"
+        f"*{word_count}* total words played\n"
+        f"*{letter_count}* total letters played"
+    )
+
+
+@dp.message_handler(commands="globalstats")
 async def cmd_globalstats(message: types.Message) -> None:
     async with pool.acquire() as conn:
-        group_count, game_count = await conn.fetchrow("SELECT COUNT(DISTINCT game.group_id), COUNT(game.*) FROM game;")
+        group_count, game_count = await conn.fetchrow("SELECT COUNT(DISTINCT group_id), COUNT(*) FROM game;")
         player_count, word_count, letter_count = await conn.fetchrow(
             "SELECT COUNT(player.*), SUM(player.word_count), SUM(player.letter_count) FROM player;"
         )
-        await message.reply(
-            "Global statistics\n"
-            f"*{group_count}* total groups\n"
-            f"*{player_count}* total players\n"
-            f"*{game_count}* games played\n"
-            f"*{word_count}* total words played\n"
-            f"*{letter_count}* total letters played"
-        )
+    await message.reply(
+        "Global statistics\n"
+        f"*{group_count}* total groups\n"
+        f"*{player_count}* total players\n"
+        f"*{game_count}* games played\n"
+        f"*{word_count}* total words played\n"
+        f"*{letter_count}* total letters played"
+    )
+
+
+@dp.message_handler(is_owner=True, commands="sql")
+async def cmd_sql(message: types.Message) -> None:
+    async with pool.acquire() as conn:
+        res = await conn.fetch(message.get_full_command()[1])
+    if not res:
+        await message.reply("No results returned.")
+        return
+    text = ["*" + " - ".join(res[0].keys()) + "*"]
+    for r in res:
+        text.append("`" + " - ".join([str(i) for i in r.values()]) + "`")
+    await message.reply("\n".join(text))
 
 
 @dp.message_handler(is_group=True, regexp="^\w+$")
@@ -505,7 +533,5 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# TODO: /groupstats
-# TODO: Make PreparedStatements for SQL code
-# TODO: /sql
+# TODO: achv
 # TODO: Modes: race game and mixed elimination game based on word length

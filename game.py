@@ -71,12 +71,6 @@ class ClassicGame:
                             disable_web_page_preview=True)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
-        async with pool.acquire() as conn:
-            if not await conn.fetchval("SELECT id FROM player WHERE user_id = $1", user.id):
-                await conn.execute("""\
-INSERT INTO player (user_id, game_count, win_count, word_count, letter_count)
-VALUES
-    ($1, 0, 0, 0, 0)""", user.id)
 
     async def forcejoin(self, message: types.Message) -> None:
         if self.state == GameState.KILLGAME or len(self.players) >= self.max_players:
@@ -94,12 +88,6 @@ VALUES
                             disable_web_page_preview=True)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
-        async with pool.acquire() as conn:
-            if not await conn.fetchval("SELECT id FROM player WHERE user_id = $1", user.id):
-                await conn.execute("""\
-INSERT INTO player (user_id, game_count, win_count, word_count, letter_count)
-VALUES
-($1, 0, 0, 0, 0)""", user.id)
 
     async def flee(self, message: types.Message) -> None:
         user_id = message.from_user.id
@@ -172,12 +160,6 @@ VALUES
                             disable_web_page_preview=True)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
-        async with pool.acquire() as conn:
-            if not await conn.fetchval("SELECT id FROM player WHERE user_id = $1", ON9BOT_ID):
-                await conn.execute("""\
-INSERT INTO player (user_id, game_count, win_count, word_count, letter_count)
-VALUES
-    ($1, 0, 0, 0, 0)""", ON9BOT_ID)
 
     async def remvp(self, message: types.Message) -> None:
         if self.state != GameState.JOINING:
@@ -328,8 +310,17 @@ VALUES
                                self.start_time, self.end_time)
             game_id = await conn.fetchval("SELECT id FROM game WHERE group_id = $1 AND start_time = $2",
                                           self.group_id, self.start_time)
+            stmt = await conn.prepare("SELECT * FROM player WHERE user_id = $1")
             for p in self.players:
-                await conn.execute("""\
+                if not await stmt.fetchval(p.user_id):
+                    await conn.execute("""\
+INSERT INTO player (user_id, game_count, win_count, word_count, letter_count, longest_word)
+VALUES
+    ($1, 1, $2, $3, $4, $5::TEXT)""",
+                                       p.user_id, int(p in self.players_in_game), p.word_count, p.letter_count,
+                                       p.longest_word or None)
+                else:
+                    await conn.execute("""\
 UPDATE player
 SET game_count = game_count + 1,
     win_count = win_count + $1,
@@ -341,8 +332,8 @@ SET game_count = game_count + 1,
                         ELSE longest_word
                    END
 WHERE user_id = $5;""",
-                                   int(p in self.players_in_game),
-                                   p.word_count, p.letter_count, p.longest_word or None, p.user_id)
+                                       int(p in self.players_in_game),
+                                       p.word_count, p.letter_count, p.longest_word or None, p.user_id)
                 await conn.execute("""\
 INSERT INTO gameplayer (user_id, group_id, game_id, won, word_count, letter_count, longest_word)
 VALUES
