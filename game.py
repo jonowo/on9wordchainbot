@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime
 from functools import lru_cache
-from operator import attrgetter
 from random import choice, shuffle, randint
 from string import ascii_lowercase
 from typing import Optional, Any
@@ -716,7 +715,7 @@ class EliminationGame(ClassicGame):
 
     def get_leaderboard(self, show_player: Optional[Player] = None) -> str:
         players = self.players_in_game[:]
-        players.sort(key=attrgetter("letter_count"), reverse=True)
+        players.sort(key=lambda k: (k.letter_count, k.user_id), reverse=True)
         text = ""
         if show_player:
             if len(players) <= 10:

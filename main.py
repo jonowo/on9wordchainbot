@@ -7,7 +7,7 @@ from time import time
 from uuid import uuid4
 
 from aiogram import executor, types
-from aiogram.utils.exceptions import TelegramAPIError, BadRequest
+from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
 
 from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool, WORDS,
                        WORDS_LI, GameState, GameSettings)
@@ -517,7 +517,16 @@ async def inline_handler(inline_query: types.InlineQuery):
 
 @dp.errors_handler(exception=TelegramAPIError)
 async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
-    if error.__class__ == BadRequest and str(error) == "Reply message not found":
+    if isinstance(error, BadRequest) and str(error) == "Reply message not found":
+        return
+    if isinstance(error, MigrateToChat):
+        if update.message.chat.id in GAMES:
+            GAMES[error.migrate_to_chat_id] = GAMES.pop(update.message.chat.id)
+            GAMES[error.migrate_to_chat_id].group_id = error.migrate_to_chat_id
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE game SET group_id = $1 WHERE group_id = $2;\n"
+                               "UPDATE gameplayer SET group_id = $1 WHERE group_id = $2;",
+                               error.migrate_to_chat_id, update.message.chat.id)
         return
     await bot.send_message(ADMIN_GROUP_ID,
                            f"`{error.__class__.__name__} @ "
