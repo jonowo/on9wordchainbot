@@ -95,7 +95,7 @@ async def cmd_info(message: types.Message) -> None:
 async def cmd_ping(message: types.Message) -> None:
     t = time()
     msg = await message.reply("Pong!")
-    await msg.edit_text(f"Pong!\nSeconds used: `{time() - t:.3f}`")
+    await msg.edit_text(f"Pong! `{time() - t:.3f}s`")
 
 
 @dp.message_handler(commands="runinfo")
@@ -438,6 +438,19 @@ async def cmd_sql(message: types.Message) -> None:
     await message.reply("\n".join(text))
 
 
+@dp.message_handler(commands="feedback")
+async def cmd_feedback(message: types.Message) -> None:
+    rmsg = message.reply_to_message
+    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
+        return
+    arg = message.get_full_command()[1]
+    if not arg:
+        await message.reply("Send feedback to my owner using this function.\nUsage example: `/feedback JS is very on9`")
+        return
+    await message.forward(ADMIN_GROUP_ID)
+    await message.reply("Feedback sent successfully.")
+
+
 @dp.message_handler(is_group=True, regexp="^\w+$")
 @dp.edited_message_handler(is_group=True, regexp="^\w+$")
 async def message_handler(message: types.Message) -> None:
@@ -533,5 +546,6 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+# TODO: $$$
 # TODO: achv
 # TODO: Modes: race game and mixed elimination game based on word length
