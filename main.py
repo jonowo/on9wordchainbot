@@ -11,7 +11,8 @@ from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
 
 from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool, WORDS,
                        WORDS_LI, GameState, GameSettings)
-from game import ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, EliminationGame
+from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame,  RequiredLetterGame,
+                  EliminationGame)
 
 seed(time())
 logging.basicConfig(level=logging.INFO)
@@ -31,12 +32,12 @@ async def games_group_only(message: types.Message) -> None:
 async def cmd_start(message: types.Message) -> None:
     await message.reply(
         "Terms of Service\n\n"
-        "0. You must not abuse this bot.\n\n"
-        "1. You must report any bugs you encounter to this bot's owner - [Trainer Jono](https://t.me/Trainer_Jono).\n\n"
-        "2. You understand that complains about words being missing from this bot's word list are usually ignored "
-        "since this bot's owner is not responsible for such issues.\n\n"
-        "3. You will forgive this bot's owner in case a game suddenly ends without any notification, usually due to "
-        "him forgetting to check if there were running games before manually terminating this bot's program.\n\n"
+        "0. You *MUST* report bugs you encounter to this bot's owner - "
+        "[Trainer Jono](https://t.me/Trainer_Jono).\n\n"
+        "1. You understand that complaints about missing words are usually ignored since this bot's owner is not "
+        "responsible for such issues.\n\n"
+        "2. You will forgive this bot's owner in case a game suddenly ends, usually due to him forgetting to check if "
+        "there were running games before manually terminating this bot's program.\n\n"
         "By starting this bot, you have agreed to the above terms of service.\n"
         "Add me to a group to start playing games!",
         disable_web_page_preview=True,
@@ -67,16 +68,18 @@ async def cmd_help(message: types.Message) -> None:
         "with a word in time are eliminated from the game. The time limit decreases and the minimum word length limit "
         "increases throughout the game to level up the difficulty.\n\n"
         "/starthard - Hard mode game\n"
-        "Classic gameplay but with the most difficult configurations set initially.\n\n"
+        "Classic gameplay starting with the most difficult settings.\n\n"
         "/startchaos - Chaos game\n"
         "Classic gameplay but without turn order, players are selected to answer by random.\n\n"
         "/startcfl - Chosen first letter game\n"
         "Players come up with words starting with the chosen letter.\n\n"
         "/startbl - Banned letters game\n"
-        "Classic gameplay but 2-4 letters (incl. max one vowel) are banned and cannot be present in words.\n\n"
+        "Classic gameplay but 2-4 letters (incl. max one vowel) are banned and cannot be present in answers.\n\n"
+        "/startrl - Required letter game\n"
+        "Classic gameplay but a specific letter must be present in answers.\n\n"
         "/startelim - Elimination game\n"
-        "Each player has a score, i.e. their cumulative word length. After each player has played a round, the "
-        "player(s) with the lowest score get eliminated from the game. Last standing player wins.",
+        "Each player has a score, which is their cumulative word length. After each player has played a round, the "
+        "player(s) with the lowest score get eliminated from the game.",
         disable_web_page_preview=True
     )
 
@@ -84,8 +87,9 @@ async def cmd_help(message: types.Message) -> None:
 @dp.message_handler(commands="info")
 async def cmd_info(message: types.Message) -> None:
     await message.reply(
-        "Join the [official channel](https://t.me/On9Updates) and the [official group](https://t.me/on9wordchain)!\n"
-        "GitHub repo: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
+        "[Official channel](https://t.me/On9Updates)\n"
+        "[Official group](https://t.me/on9wordchain)\n"
+        "[GitHub repo: Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
         "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English or Cantonese.\n",
         disable_web_page_preview=True
     )
@@ -242,6 +246,26 @@ async def cmd_startbl(message: types.Message) -> None:
     await game.main_loop(message)
 
 
+@dp.message_handler(commands="startrl")
+async def cmd_startrl(message: types.Message) -> None:
+    if message.chat.id > 0:
+        await games_group_only(message)
+        return
+    rmsg = message.reply_to_message
+    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
+        return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+    group_id = message.chat.id
+    if group_id in GAMES:
+        await GAMES[group_id].join(message)
+        return
+    game = RequiredLetterGame(message.chat.id)
+    GAMES[group_id] = game
+    await game.main_loop(message)
+
+
 @dp.message_handler(commands=["startelim", "startelimination"])
 async def cmd_startelim(message: types.Message) -> None:
     if message.chat.id > 0:
@@ -368,7 +392,7 @@ async def cmd_leave(message: types.Message) -> None:
     await message.chat.leave()
 
 
-@dp.message_handler(is_group=True, commands="stats")
+@dp.message_handler(commands="stats")
 async def cmd_stats(message: types.Message) -> None:
     rmsg = message.reply_to_message
     if (message.chat.id < 0 and not message.get_command().partition("@")[2]
@@ -397,8 +421,8 @@ async def cmd_groupstats(message: types.Message) -> None:
     async with pool.acquire() as conn:
         player_count, game_count, word_count, letter_count = await conn.fetchrow("""\
 SELECT COUNT(DISTINCT user_id), COUNT(DISTINCT game_id), SUM(word_count), SUM(letter_count)
-FROM gameplayer
-WHERE group_id = $1;""", message.chat.id)
+    FROM gameplayer
+    WHERE group_id = $1;""", message.chat.id)
     await message.reply(
         "Group statistics\n"
         f"*{player_count}* total players\n"
@@ -413,7 +437,7 @@ async def cmd_globalstats(message: types.Message) -> None:
     async with pool.acquire() as conn:
         group_count, game_count = await conn.fetchrow("SELECT COUNT(DISTINCT group_id), COUNT(*) FROM game;")
         player_count, word_count, letter_count = await conn.fetchrow(
-            "SELECT COUNT(player.*), SUM(player.word_count), SUM(player.letter_count) FROM player;"
+            "SELECT COUNT(*), SUM(word_count), SUM(letter_count) FROM player;"
         )
     await message.reply(
         "Global statistics\n"
@@ -486,6 +510,10 @@ async def inline_handler(inline_query: types.InlineQuery):
             types.InlineQueryResultArticle(
                 id=str(uuid4()), title="Start a banned letters game", description="/startbl@on9wordchainbot",
                 input_message_content=types.InputTextMessageContent("/startbl@on9wordchainbot")
+            ),
+            types.InlineQueryResultArticle(
+                id=str(uuid4()), title="Start a required letter game", description="/startrl@on9wordchainbot",
+                input_message_content=types.InputTextMessageContent("/startrl@on9wordchainbot")
             ),
             types.InlineQueryResultArticle(
                 id=str(uuid4()), title="Start an elimination game", description="/startelim@on9wordchainbot",
