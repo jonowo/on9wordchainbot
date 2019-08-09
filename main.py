@@ -12,7 +12,7 @@ from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
 from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool, WORDS,
                        WORDS_LI, GameState, GameSettings)
 from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame,  RequiredLetterGame,
-                  EliminationGame)
+                  EliminationGame, MixedEliminationGame)
 
 seed(time())
 logging.basicConfig(level=logging.INFO)
@@ -266,7 +266,7 @@ async def cmd_startrl(message: types.Message) -> None:
     await game.main_loop(message)
 
 
-@dp.message_handler(commands=["startelim", "startelimination"])
+@dp.message_handler(commands="startelim")
 async def cmd_startelim(message: types.Message) -> None:
     if message.chat.id > 0:
         await games_group_only(message)
@@ -286,6 +286,26 @@ async def cmd_startelim(message: types.Message) -> None:
     await game.main_loop(message)
 
 
+@dp.message_handler(is_owner=True, commands="startme")
+async def cmd_startmixedelim(message: types.Message) -> None:
+    if message.chat.id > 0:
+        await games_group_only(message)
+        return
+    rmsg = message.reply_to_message
+    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
+        return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+    group_id = message.chat.id
+    if group_id in GAMES:
+        await GAMES[group_id].join(message)
+        return
+    game = MixedEliminationGame(message.chat.id)
+    GAMES[group_id] = game
+    await game.main_loop(message)
+
+
 @dp.message_handler(commands="join")
 async def cmd_join(message: types.Message) -> None:
     if message.chat.id > 0:
@@ -301,12 +321,16 @@ async def cmd_join(message: types.Message) -> None:
 async def cmd_forcejoin(message: types.Message) -> None:
     group_id = message.chat.id
     rmsg = message.reply_to_message
-    if group_id in GAMES and rmsg and (not rmsg.from_user.is_bot or rmsg.from_user.id == ON9BOT_ID):
-        if rmsg.from_user.id == ON9BOT_ID and isinstance(GAMES[group_id], EliminationGame):
+    if group_id not in GAMES:
+        return
+    if rmsg and rmsg.from_user.is_bot:
+        if rmsg.from_user.id != ON9BOT_ID:
+            return
+        if isinstance(GAMES[group_id], EliminationGame):
             await message.reply("Sorry, [On9Bot](https://t.me/On9Bot) can't play elimination games.",
                                 disable_web_page_preview=True)
             return
-        await GAMES[message.chat.id].forcejoin(message)
+    await GAMES[message.chat.id].forcejoin(message)
 
 
 @dp.message_handler(is_group=True, commands="extend")
@@ -354,12 +378,13 @@ async def cmd_forceskip(message: types.Message) -> None:
 @dp.message_handler(is_group=True, commands="addvp")
 async def addvp(message: types.Message) -> None:
     group_id = message.chat.id
-    if group_id in GAMES:
-        if isinstance(GAMES[group_id], EliminationGame):
-            await message.reply("Sorry, [On9Bot](https://t.me/On9Bot) can't play elimination games.",
-                                disable_web_page_preview=True)
-            return
-        await GAMES[group_id].addvp(message)
+    if group_id not in GAMES:
+        return
+    if isinstance(GAMES[group_id], EliminationGame):
+        await message.reply("Sorry, [On9Bot](https://t.me/On9Bot) can't play elimination games.",
+                            disable_web_page_preview=True)
+        return
+    await GAMES[group_id].addvp(message)
 
 
 @dp.message_handler(is_group=True, commands="remvp")
@@ -396,7 +421,8 @@ async def cmd_leave(message: types.Message) -> None:
 async def cmd_stats(message: types.Message) -> None:
     rmsg = message.reply_to_message
     if (message.chat.id < 0 and not message.get_command().partition("@")[2]
-            or rmsg and rmsg.from_user.is_bot and rmsg.from_user.id != ON9BOT_ID):
+            or rmsg and (rmsg.from_user.is_bot and rmsg.from_user.id != ON9BOT_ID
+                         or rmsg.forward_from and rmsg.forward_from.is_bot and rmsg.forward_from.id != ON9BOT_ID)):
         return
     user = rmsg.forward_from or rmsg.from_user if rmsg else message.from_user
     async with pool.acquire() as conn:
@@ -585,4 +611,3 @@ if __name__ == "__main__":
 
 # TODO: $$$
 # TODO: achv
-# TODO: Modes: race game and mixed elimination game based on word length
