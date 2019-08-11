@@ -23,6 +23,8 @@ GAMES = {}
 with open("dburi.txt") as f:
     DB_URI = f.readline().strip()
 pool = None
+with open("provider_token.txt") as f:
+    PROVIDER_TOKEN = f.readline().strip()
 
 print("Fetching list of words...")
 WORDS_LI = {i: [] for i in ascii_lowercase}

@@ -1,20 +1,23 @@
 import asyncio
 import logging
 from datetime import datetime
+from decimal import Decimal, getcontext, ROUND_HALF_UP, InvalidOperation
 from random import seed
 from string import ascii_lowercase
 from time import time
 from uuid import uuid4
 
 from aiogram import executor, types
+from aiogram.types.message import ContentTypes
 from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
 
-from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool, WORDS,
-                       WORDS_LI, GameState, GameSettings)
-from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame,  RequiredLetterGame,
+from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool,
+                       PROVIDER_TOKEN, WORDS, WORDS_LI, GameState, GameSettings)
+from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, RequiredLetterGame,
                   EliminationGame, MixedEliminationGame)
 
 seed(time())
+getcontext().rounding = ROUND_HALF_UP
 logging.basicConfig(level=logging.INFO)
 build_time = datetime.now().replace(microsecond=0)
 MAINT_MODE = False
@@ -30,6 +33,10 @@ async def games_group_only(message: types.Message) -> None:
 
 @dp.message_handler(is_group=False, commands="start")
 async def cmd_start(message: types.Message) -> None:
+    arg = message.get_args()
+    if arg == "donate":
+        await send_donate_msg(message)
+        return
     await message.reply(
         "Terms of Service\n\n"
         "0. You *MUST* report bugs you encounter to this bot's owner - "
@@ -48,7 +55,7 @@ async def cmd_start(message: types.Message) -> None:
 
 
 @dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
-async def added_into_group(message: types.Message) -> None:
+async def new_member(message: types.Message) -> None:
     if any(user.id == BOT_ID for user in message.new_chat_members):
         await message.reply("Thanks for adding me. Click /startclassic to start a classic game!", reply=False)
     elif message.chat.id == OFFICIAL_GROUP_ID:
@@ -431,7 +438,7 @@ async def cmd_stats(message: types.Message) -> None:
         await message.reply(f"No statistics for [{user.full_name}](tg://user?id={user.id})!")
         return
     await message.reply(
-        f"Statistics for [{user.full_name}](tg://user?id={user.id}):\n"
+        f"\U0001f4ca Statistics for [{user.full_name}](tg://user?id={user.id}):\n"
         f"*{res['game_count']}* games played\n"
         f"*{res['win_count']} ("
         f"{'0%' if res['game_count'] == res['win_count'] == 0 else format(res['win_count'] / res['game_count'], '.0%')}"
@@ -449,13 +456,11 @@ async def cmd_groupstats(message: types.Message) -> None:
 SELECT COUNT(DISTINCT user_id), COUNT(DISTINCT game_id), SUM(word_count), SUM(letter_count)
     FROM gameplayer
     WHERE group_id = $1;""", message.chat.id)
-    await message.reply(
-        "Group statistics\n"
-        f"*{player_count}* total players\n"
-        f"*{game_count}* games played\n"
-        f"*{word_count}* total words played\n"
-        f"*{letter_count}* total letters played"
-    )
+    await message.reply("\U0001f4ca Group statistics\n"
+                        f"*{player_count}* total players\n"
+                        f"*{game_count}* games played\n"
+                        f"*{word_count}* total words played\n"
+                        f"*{letter_count}* total letters played")
 
 
 @dp.message_handler(commands="globalstats")
@@ -465,14 +470,104 @@ async def cmd_globalstats(message: types.Message) -> None:
         player_count, word_count, letter_count = await conn.fetchrow(
             "SELECT COUNT(*), SUM(word_count), SUM(letter_count) FROM player;"
         )
+    await message.reply("\U0001f4ca Global statistics\n"
+                        f"*{group_count}* total groups\n"
+                        f"*{player_count}* total players\n"
+                        f"*{game_count}* games played\n"
+                        f"*{word_count}* total words played\n"
+                        f"*{letter_count}* total letters played")
+
+
+@dp.message_handler(commands="donate")
+async def cmd_donate(message: types.Message) -> None:
+    if message.chat.id < 0:
+        await message.reply("Please donate in private.", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton("Donate in private", url="https://t.me/on9wordchainbot?start=donate")
+        ]]))
+        return
+    arg = message.get_args()
+    if not arg:
+        await send_donate_msg(message)
+    else:
+        try:
+            amt = int(Decimal(arg).quantize(Decimal("1.00")) * 100)
+            assert amt > 0
+            await send_donate_invoice(message.chat.id, amt)
+        except (ValueError, InvalidOperation, AssertionError):
+            await message.reply("Invalid amount.\nPlease enter a positive number.")
+        except BadRequest as e:
+            if str(e) == "Currency_total_amount_invalid":
+                await message.reply("Sorry, the entered amount was not within 1-10000 USD. Please try another amount.")
+                return
+            raise
+
+
+async def send_donate_msg(message: types.Message) -> None:
     await message.reply(
-        "Global statistics\n"
-        f"*{group_count}* total groups\n"
-        f"*{player_count}* total players\n"
-        f"*{game_count}* games played\n"
-        f"*{word_count}* total words played\n"
-        f"*{letter_count}* total letters played"
+        "Donate to support this project! \u2764\ufe0f\n"
+        "Donations are accepted in HKD (1 USD ≈ 7.84 HKD).\n"
+        "Select one of the following options or type in the desired amount in HKD (e.g. `/donate 42.42`).",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [
+                types.InlineKeyboardButton("10 HKD", callback_data="donate:10"),
+                types.InlineKeyboardButton("20 HKD", callback_data="donate:20"),
+                types.InlineKeyboardButton("30 HKD", callback_data="donate:30")
+            ],
+            [
+                types.InlineKeyboardButton("50 HKD", callback_data="donate:50"),
+                types.InlineKeyboardButton("100 HKD", callback_data="donate:100")
+            ]
+        ])
     )
+
+
+async def send_donate_invoice(user_id, amt) -> None:
+    await bot.send_invoice(
+        chat_id=user_id,
+        title="On9 Word Chain Bot Donation",
+        description="Support bot development",
+        payload=f"on9wordchainbot_donation:{user_id}",
+        provider_token=PROVIDER_TOKEN,
+        start_parameter="donate",
+        currency="HKD",
+        prices=[types.LabeledPrice("Donation", amt)]
+    )
+
+
+@dp.pre_checkout_query_handler()
+async def pre_checkout_query_handler(pre_checkout_query: types.PreCheckoutQuery) -> None:
+    if pre_checkout_query.invoice_payload == f"on9wordchainbot_donation:{pre_checkout_query.from_user.id}":
+        await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+    else:
+        await bot.answer_pre_checkout_query(
+            pre_checkout_query.id, ok=False,
+            error_message="Donation unsuccessful. No money was deducted from your credit card. "
+                          "Mind requesting a new invoice and try again? :D"
+        )
+
+
+@dp.message_handler(content_types=ContentTypes.SUCCESSFUL_PAYMENT)
+async def successful_payment_handler(message: types.Message):
+    payment = message.successful_payment
+    donation_id = str(uuid4())[:8]
+    amt = Decimal(payment.total_amount) / 100
+    dt = datetime.now().replace(microsecond=0)
+    async with pool.acquire() as conn:
+        await conn.execute("""\
+INSERT INTO donation (donation_id, user_id, amount, donate_time, telegram_payment_charge_id, provider_payment_charge_id)
+VALUES
+    ($1, $2, $3::NUMERIC, $4, $5, $6)""",
+                           donation_id, message.from_user.id, str(amt), dt,
+                           payment.telegram_payment_charge_id, payment.provider_payment_charge_id)
+    await message.reply(f"Your donation of {amt} HKD is successful.\n"
+                        "Thank you for your support! \u2764\ufe0f\n"
+                        f"Donation id: #on9wcbot\_{donation_id}",
+                        reply=False)
+    await bot.send_message(ADMIN_GROUP_ID,
+                           f"Received donation of {amt} HKD from "
+                           f"[{message.from_user.full_name}](tg://user?id={message.from_user.id}) "
+                           f"(id: `{message.from_user.id}`).\n"
+                           f"Donation id: #on9wcbot\_{donation_id}")
 
 
 @dp.message_handler(is_owner=True, commands="sql")
@@ -491,11 +586,13 @@ async def cmd_sql(message: types.Message) -> None:
 @dp.message_handler(commands="feedback")
 async def cmd_feedback(message: types.Message) -> None:
     rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
+    if (message.chat.id < 0 and not message.get_command().partition("@")[2]
+            and (not rmsg or rmsg.from_user.id != BOT_ID)):
         return
     arg = message.get_full_command()[1]
     if not arg:
-        await message.reply("Send feedback to my owner using this function.\nUsage example: `/feedback JS is very on9`")
+        await message.reply("Send feedback to my owner using this function.\n"
+                            "Usage example: `/feedback@on9wordchainbot JS is very on9`")
         return
     await message.forward(ADMIN_GROUP_ID)
     await message.reply("Feedback sent successfully.")
@@ -569,6 +666,14 @@ async def inline_handler(inline_query: types.InlineQuery):
     await inline_query.answer(res, is_personal=True)
 
 
+@dp.callback_query_handler()
+async def callback_query_handler(callback_query: types.CallbackQuery) -> None:
+    text = callback_query.data
+    if text.startswith("donate"):
+        await send_donate_invoice(callback_query.from_user.id, int(text.split(":")[1]) * 100)
+    await callback_query.answer()
+
+
 @dp.errors_handler(exception=TelegramAPIError)
 async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
     if isinstance(error, BadRequest) and str(error) == "Reply message not found":
@@ -609,5 +714,4 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# TODO: $$$
 # TODO: achv
