@@ -10,9 +10,10 @@ from uuid import uuid4
 from aiogram import executor, types
 from aiogram.types.message import ContentTypes
 from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
+from aiogram.utils.markdown import escape_md
 
-from constants import (bot, dp, BOT_ID, ON9BOT_ID, OWNER_ID, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool,
-                       PROVIDER_TOKEN, WORDS, WORDS_LI, GameState, GameSettings)
+from constants import (bot, dp, BOT_ID, ON9BOT_ID, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool,
+                       PROVIDER_TOKEN, WORDS, WORDS_LI, GameState, GameSettings, amt_donated)
 from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, RequiredLetterGame,
                   EliminationGame, MixedEliminationGame)
 
@@ -23,7 +24,7 @@ build_time = datetime.now().replace(microsecond=0)
 MAINT_MODE = False
 
 
-async def games_group_only(message: types.Message) -> None:
+async def groups_only_command(message: types.Message) -> None:
     await message.reply(
         "You must run this command in a group.", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
             types.InlineKeyboardButton("Add me to a group!", url="https://t.me/on9wordchainbot?startgroup=_")
@@ -34,7 +35,10 @@ async def games_group_only(message: types.Message) -> None:
 @dp.message_handler(is_group=False, commands="start")
 async def cmd_start(message: types.Message) -> None:
     arg = message.get_args()
-    if arg == "donate":
+    if arg == "help":
+        await cmd_help(message)
+        return
+    elif arg == "donate":
         await send_donate_msg(message)
         return
     await message.reply(
@@ -66,7 +70,13 @@ async def new_member(message: types.Message) -> None:
 @dp.message_handler(commands="help")
 async def cmd_help(message: types.Message) -> None:
     if message.chat.id < 0:
-        await message.reply("Please use this command in private.")
+        await message.reply("Please use this command in private.", reply_markup=types.InlineKeyboardMarkup(
+            inline_keyboard=[[
+                types.InlineKeyboardButton(
+                    "Send help message in private", url="https://t.me/on9wordchainbot?start=help"
+                )
+            ]]
+        ))
         return
     await message.reply(
         "I provide several variations of the English game _Word Chain_.\n\n"
@@ -156,7 +166,7 @@ async def cmd_exists(message: types.Message) -> None:
 @dp.message_handler(commands="startclassic")
 async def cmd_startclassic(message: types.Message) -> None:
     if message.chat.id > 0:
-        await games_group_only(message)
+        await groups_only_command(message)
         return
     rmsg = message.reply_to_message
     if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
@@ -176,7 +186,7 @@ async def cmd_startclassic(message: types.Message) -> None:
 @dp.message_handler(commands="starthard")
 async def cmd_starthard(message: types.Message) -> None:
     if message.chat.id > 0:
-        await games_group_only(message)
+        await groups_only_command(message)
         return
     rmsg = message.reply_to_message
     if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
@@ -196,7 +206,7 @@ async def cmd_starthard(message: types.Message) -> None:
 @dp.message_handler(commands="startchaos")
 async def cmd_startchaos(message: types.Message) -> None:
     if message.chat.id > 0:
-        await games_group_only(message)
+        await groups_only_command(message)
         return
     rmsg = message.reply_to_message
     if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
@@ -216,7 +226,7 @@ async def cmd_startchaos(message: types.Message) -> None:
 @dp.message_handler(commands="startcfl")
 async def cmd_startcfl(message: types.Message) -> None:
     if message.chat.id > 0:
-        await games_group_only(message)
+        await groups_only_command(message)
         return
     rmsg = message.reply_to_message
     if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
@@ -236,7 +246,7 @@ async def cmd_startcfl(message: types.Message) -> None:
 @dp.message_handler(commands="startbl")
 async def cmd_startbl(message: types.Message) -> None:
     if message.chat.id > 0:
-        await games_group_only(message)
+        await groups_only_command(message)
         return
     rmsg = message.reply_to_message
     if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
@@ -256,7 +266,7 @@ async def cmd_startbl(message: types.Message) -> None:
 @dp.message_handler(commands="startrl")
 async def cmd_startrl(message: types.Message) -> None:
     if message.chat.id > 0:
-        await games_group_only(message)
+        await groups_only_command(message)
         return
     rmsg = message.reply_to_message
     if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
@@ -276,7 +286,7 @@ async def cmd_startrl(message: types.Message) -> None:
 @dp.message_handler(commands="startelim")
 async def cmd_startelim(message: types.Message) -> None:
     if message.chat.id > 0:
-        await games_group_only(message)
+        await groups_only_command(message)
         return
     rmsg = message.reply_to_message
     if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
@@ -293,13 +303,17 @@ async def cmd_startelim(message: types.Message) -> None:
     await game.main_loop(message)
 
 
-@dp.message_handler(is_owner=True, commands="startme")
+@dp.message_handler(commands="startmelim")
 async def cmd_startmixedelim(message: types.Message) -> None:
     if message.chat.id > 0:
-        await games_group_only(message)
+        await groups_only_command(message)
         return
     rmsg = message.reply_to_message
     if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
+        return
+    if (message.chat.id not in VIP_GROUP and message.from_user.id not in VIP
+            and (await amt_donated(message.from_user.id)) < 30):
+        await message.reply("Ability to start this mode is rewarded for donating.")
         return
     if MAINT_MODE:
         await message.reply("Maintenance mode is on. Games are temporarily disabled.")
@@ -316,7 +330,7 @@ async def cmd_startmixedelim(message: types.Message) -> None:
 @dp.message_handler(commands="join")
 async def cmd_join(message: types.Message) -> None:
     if message.chat.id > 0:
-        await games_group_only(message)
+        await groups_only_command(message)
         return
     group_id = message.chat.id
     if group_id in GAMES:
@@ -438,25 +452,31 @@ async def cmd_stats(message: types.Message) -> None:
         await message.reply(f"No statistics for [{user.full_name}](tg://user?id={user.id})!")
         return
     await message.reply(
-        f"\U0001f4ca Statistics for [{user.full_name}](tg://user?id={user.id}):\n"
-        f"*{res['game_count']}* games played\n"
-        f"*{res['win_count']} ("
-        f"{'0%' if res['game_count'] == res['win_count'] == 0 else format(res['win_count'] / res['game_count'], '.0%')}"
-        ")* games won\n"
-        f"*{res['word_count']}* total words played\n"
-        f"*{res['letter_count']}* total letters played"
+        f"\U0001f4ca Statistics for "
+        f"[{escape_md(user.full_name)}"
+        + (" \u2b50\ufe0f" if user.id in VIP or bool(await amt_donated(user.id)) else "")
+        + f"](tg://user?id={user.id}):\n"
+          f"*{res['game_count']}* games played\n"
+          f"*{res['win_count']} ("
+          f"{'0%' if res['game_count'] == res['win_count'] == 0 else format(res['win_count'] / res['game_count'], '.0%')}"
+          ")* games won\n"
+          f"*{res['word_count']}* total words played\n"
+          f"*{res['letter_count']}* total letters played"
         + (f"\nLongest word used: *{res['longest_word'].capitalize()}*" if res["longest_word"] else "")
     )
 
 
-@dp.message_handler(is_group=True, commands="groupstats")
+@dp.message_handler(commands="groupstats")
 async def cmd_groupstats(message: types.Message) -> None:
+    if message.chat.id > 0:
+        await groups_only_command(message)
+        return
     async with pool.acquire() as conn:
         player_count, game_count, word_count, letter_count = await conn.fetchrow("""\
 SELECT COUNT(DISTINCT user_id), COUNT(DISTINCT game_id), SUM(word_count), SUM(letter_count)
     FROM gameplayer
     WHERE group_id = $1;""", message.chat.id)
-    await message.reply("\U0001f4ca Group statistics\n"
+    await message.reply(f"\U0001f4ca Statistics for *{escape_md(message.chat.title)}*\n"
                         f"*{player_count}* total players\n"
                         f"*{game_count}* games played\n"
                         f"*{word_count}* total words played\n"
@@ -506,11 +526,15 @@ async def send_donate_msg(message: types.Message) -> None:
     await message.reply(
         "Donate to support this project! \u2764\ufe0f\n"
         "Donations are accepted in HKD (1 USD ≈ 7.84 HKD).\n"
-        "Select one of the following options or type in the desired amount in HKD (e.g. `/donate 42.42`).",
+        "Select one of the following options or type in the desired amount in HKD (e.g. `/donate 42.42`).\n\n"
+        "Donation rewards:\n"
+        "Any amount: \u2b50\ufe0f is displayed next to your name during games.\n"
+        "15 HKD (cumulative): Search words in inline queries (e.g. `@on9wordchainbot test`)\n"
+        "30 HKD (cumulative): Start mixed elimination games (`/startmelim`)\n",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [
                 types.InlineKeyboardButton("10 HKD", callback_data="donate:10"),
-                types.InlineKeyboardButton("20 HKD", callback_data="donate:20"),
+                types.InlineKeyboardButton("15 HKD", callback_data="donate:20"),
                 types.InlineKeyboardButton("30 HKD", callback_data="donate:30")
             ],
             [
@@ -521,7 +545,7 @@ async def send_donate_msg(message: types.Message) -> None:
     )
 
 
-async def send_donate_invoice(user_id, amt) -> None:
+async def send_donate_invoice(user_id: int, amt: int) -> None:
     await bot.send_invoice(
         chat_id=user_id,
         title="On9 Word Chain Bot Donation",
@@ -547,7 +571,7 @@ async def pre_checkout_query_handler(pre_checkout_query: types.PreCheckoutQuery)
 
 
 @dp.message_handler(content_types=ContentTypes.SUCCESSFUL_PAYMENT)
-async def successful_payment_handler(message: types.Message):
+async def successful_payment_handler(message: types.Message) -> None:
     payment = message.successful_payment
     donation_id = str(uuid4())[:8]
     amt = Decimal(payment.total_amount) / 100
@@ -612,7 +636,7 @@ async def message_handler(message: types.Message) -> None:
 @dp.inline_handler()
 async def inline_handler(inline_query: types.InlineQuery):
     text = inline_query.query.lower()
-    if inline_query.from_user.id != OWNER_ID or not text:
+    if not text or inline_query.from_user.id not in VIP and (await amt_donated(inline_query.from_user.id)) < 15:
         await inline_query.answer([
             types.InlineQueryResultArticle(
                 id=str(uuid4()), title="Start a classic game", description="/startclassic@on9wordchainbot",

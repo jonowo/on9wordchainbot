@@ -6,21 +6,32 @@ from string import ascii_lowercase
 from typing import Optional, Any
 
 from aiogram import types
+from aiogram.utils.markdown import escape_md
 from aiogram.utils.exceptions import BadRequest
 
-from constants import bot, on9bot, ON9BOT_ID, GAMES, pool, WORDS, WORDS_LI, GameState, GameSettings
+from constants import bot, on9bot, ON9BOT_ID, VIP, GAMES, pool, WORDS, WORDS_LI, GameState, GameSettings, amt_donated
 
 
 class Player:
-    def __init__(self, user: Optional[types.User] = None, vp: bool = False) -> None:
+    def __init__(self, user: Optional[types.User] = None, vp: bool = False, donor=False) -> None:
         if vp:  # VP - On9Bot
             self.user_id = ON9BOT_ID
-            self.name = "[On9Bot](https://t.me/On9Bot)"
-            self.mention = f"[On9Bot](tg://user?id={self.user_id})"
+            self.name = "[On9Bot \u2b50\ufe0f](https://t.me/On9Bot)"
+            self.mention = f"[On9Bot \u2b50\ufe0f](tg://user?id={self.user_id})"
         else:
             self.user_id = user.id
-            self.name = f"[{user.full_name}](https://t.me/{user.username})" if user.username else f"*{user.full_name}*"
-            self.mention = user.get_mention()
+            if donor:
+                if user.username:
+                    self.name = f"[{escape_md(user.full_name)} \u2b50\ufe0f](https://t.me/{user.username})"
+                else:
+                    self.name = f"*{escape_md(user.full_name)} \u2b50\ufe0f*"
+                self.mention = f"[{escape_md(user.full_name)} \u2b50\ufe0f]({user.url})"
+            else:
+                if user.username:
+                    self.name = f"[{escape_md(user.full_name)}](https://t.me/{user.username})"
+                else:
+                    self.name = f"*{escape_md(user.full_name)}*"
+                self.mention = f"[{escape_md(user.full_name)}]({user.url})"
         self.word_count = 0
         self.letter_count = 0
         self.longest_word = ""
@@ -63,7 +74,7 @@ class ClassicGame:
         for p in self.players:
             if p.user_id == user.id:
                 return
-        player = Player(user)
+        player = Player(user, donor=user.id in VIP or bool(await amt_donated(user.id)))
         self.players.append(player)
         await message.reply(f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
@@ -79,7 +90,7 @@ class ClassicGame:
         for p in self.players:
             if p.user_id == user.id:
                 return
-        player = Player(user)
+        player = Player(user, donor=user.id in VIP or bool(await amt_donated(user.id)))
         self.players.append(player)
         if self.state == GameState.RUNNING:
             self.players_in_game.append(player)

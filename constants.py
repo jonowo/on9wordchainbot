@@ -17,6 +17,10 @@ with open("on9bot_token.txt") as f:
 on9bot = Bot(ON9BOT_TOKEN, parse_mode=types.ParseMode.MARKDOWN)
 ON9BOT_ID = int(ON9BOT_TOKEN.partition(":")[0])
 OWNER_ID = 463998526
+#      Jono      On9 Bot    Jeff       Luna       JS         MK
+VIP = [OWNER_ID, 506548905, 106665913, 547398181, 190726372, 540933895]
+#            On9 Word Chain  HK Duker
+VIP_GROUP = [-1001333598796, -1001295361187]
 ADMIN_GROUP_ID = -1001141544515
 OFFICIAL_GROUP_ID = -1001333598796
 GAMES = {}
@@ -60,8 +64,8 @@ class GameSettings:
     SPECIAL_GAME_MAX_PLAYERS = 30
     INCREASED_MAX_PLAYERS = 300
     MIN_TURN_SECONDS = 20
-    FIXED_TURN_SECONDS = 30
     MAX_TURN_SECONDS = 40
+    FIXED_TURN_SECONDS = 30
     TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE = 5
     MIN_WORD_LENGTH_LIMIT = 3
     MAX_WORD_LENGTH_LIMIT = 10
@@ -103,3 +107,8 @@ class AdminFilter(BoundFilter):
 dp.filters_factory.bind(GroupFilter)
 dp.filters_factory.bind(OwnerFilter)
 dp.filters_factory.bind(AdminFilter)
+
+
+async def amt_donated(user_id: int) -> int:
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT SUM(amount) FROM donation WHERE user_id = $1", user_id) or 0
