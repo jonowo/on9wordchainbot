@@ -6,8 +6,8 @@ from string import ascii_lowercase
 from typing import Optional, Any
 
 from aiogram import types
-from aiogram.utils.markdown import escape_md
 from aiogram.utils.exceptions import BadRequest
+from aiogram.utils.markdown import quote_html
 
 from constants import bot, on9bot, ON9BOT_ID, VIP, GAMES, pool, WORDS, WORDS_LI, GameState, GameSettings, amt_donated
 
@@ -16,22 +16,22 @@ class Player:
     def __init__(self, user: Optional[types.User] = None, vp: bool = False, donor=False) -> None:
         if vp:  # VP - On9Bot
             self.user_id = ON9BOT_ID
-            self.name = "[On9Bot \u2b50\ufe0f](https://t.me/On9Bot)"
-            self.mention = f"[On9Bot \u2b50\ufe0f](tg://user?id={self.user_id})"
+            self.name = "<a href='https://t.me/On9Bot'>On9Bot \u2b50\ufe0f</a>"
+            self.mention = f"<a href='tg://user?id={ON9BOT_ID}'>On9Bot \u2b50\ufe0f</a>"
         else:
             self.user_id = user.id
             if donor:
                 if user.username:
-                    self.name = f"[{escape_md(user.full_name)} \u2b50\ufe0f](https://t.me/{user.username})"
+                    self.name = f"<a href='https://t.me/{user.username}'>{quote_html(user.full_name)} \u2b50\ufe0f</a>"
                 else:
-                    self.name = f"*{escape_md(user.full_name)} \u2b50\ufe0f*"
-                self.mention = f"[{escape_md(user.full_name)} \u2b50\ufe0f]({user.url})"
+                    self.name = f"<b>{quote_html(user.full_name)} \u2b50\ufe0f</b>"
+                self.mention = user.get_mention(name=user.full_name + " \u2b50\ufe0f", as_html=True)
             else:
                 if user.username:
-                    self.name = f"[{escape_md(user.full_name)}](https://t.me/{user.username})"
+                    self.name = f"<a href='https://t.me/{user.username}'>{quote_html(user.full_name)}</a>"
                 else:
-                    self.name = f"*{escape_md(user.full_name)}*"
-                self.mention = f"[{escape_md(user.full_name)}]({user.url})"
+                    self.name = f"<b>{quote_html(user.full_name)}</b>"
+                self.mention = user.get_mention(as_html=True)
         self.word_count = 0
         self.letter_count = 0
         self.longest_word = ""
@@ -78,6 +78,7 @@ class ClassicGame:
         self.players.append(player)
         await message.reply(f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+                            parse_mode=types.ParseMode.HTML,
                             disable_web_page_preview=True)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
@@ -96,6 +97,7 @@ class ClassicGame:
             self.players_in_game.append(player)
         await message.reply(f"{player.name} has been joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+                            parse_mode=types.ParseMode.HTML,
                             disable_web_page_preview=True)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
@@ -112,6 +114,7 @@ class ClassicGame:
             return
         await message.reply(f"{player.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+                            parse_mode=types.ParseMode.HTML,
                             disable_web_page_preview=True)
 
     async def forceflee(self, message: types.Message) -> None:
@@ -126,7 +129,8 @@ class ClassicGame:
             return
         await message.reply(
             f"{player.name} has been fled. There {'is' if len(self.players) == 1 else 'are'} {len(self.players)} "
-            f"player{'' if len(self.players) == 1 else 's'}.", disable_web_page_preview=True
+            f"player{'' if len(self.players) == 1 else 's'}.",
+            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True
         )
 
     async def extend(self, message: types.Message) -> None:
@@ -167,10 +171,10 @@ class ClassicGame:
                 return
         vp = Player(vp=True)
         self.players.append(vp)
-        await on9bot.send_message(self.group_id, "/join@on9wordchainbot")
+        await on9bot.send_message(self.group_id, "/join")
         await message.reply(f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            disable_web_page_preview=True)
+                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
 
@@ -183,19 +187,20 @@ class ClassicGame:
                 break
         else:
             return
-        await on9bot.send_message(self.group_id, "/flee@on9wordchainbot")
+        await on9bot.send_message(self.group_id, "/flee")
         await message.reply(f"{vp.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            disable_web_page_preview=True)
+                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True)
 
     async def send_turn_message(self) -> None:
         await self.send_message(
             f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
-            f"Your word must start with _{self.current_word[-1].upper()}_ "
-            f"and include *at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}*.\n"
-            f"You have *{self.time_limit}s* to answer.\n"
+            f"Your word must start with <i>{self.current_word[-1].upper()}</i> and "
+            f"include <b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
+            f"You have <b>{self.time_limit}s</b> to answer.\n"
             f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}"
+            f"Total words: {self.turns}",
+            parse_mode=types.ParseMode.HTML
         )
         self.answered = False
         self.accepting_answers = True
@@ -235,7 +240,7 @@ class ClassicGame:
                 await self.send_message(text.rstrip())
                 break
         else:
-            await on9bot.send_message(self.group_id, "/forceskip I'm done")
+            await on9bot.send_message(self.group_id, "/forceskip bey")
             await asyncio.sleep(1)
             self.time_left = 0
 
@@ -284,8 +289,9 @@ class ClassicGame:
             self.current_word = random.choice(WORDS_LI[random.choice(ascii_lowercase)])
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
+        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+                                parse_mode=types.ParseMode.HTML)
 
     async def running_phase(self) -> Optional[bool]:
         if self.answered:
@@ -295,7 +301,8 @@ class ClassicGame:
             if self.time_left > 0:
                 return
             self.accepting_answers = False
-            await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!")
+            await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!",
+                                    parse_mode=types.ParseMode.HTML)
             del self.players_in_game[0]
             if len(self.players_in_game) == 1:
                 self.end_time = datetime.now().replace(microsecond=0)
@@ -303,10 +310,11 @@ class ClassicGame:
                 await self.send_message(
                     f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
                     f"Total words: {self.turns}"
-                    + (f"\nLongest word: _{self.longest_word.capitalize()}_ from "
+                    + (f"\nLongest word: <i>{self.longest_word.capitalize()}</i> from "
                        f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
                        if self.longest_word else "")
-                    + f"\nGame length: `{str(int(td.total_seconds()) // 3600).zfill(2)}{str(td)[-6:]}`"
+                    + f"\nGame length: <code>{int(td.total_seconds()) // 3600:02}{str(td)[-6:]}</code>",
+                    parse_mode=types.ParseMode.HTML
                 )
                 del GAMES[self.group_id]
                 return True
@@ -357,7 +365,7 @@ VALUES
     async def main_loop(self, message: types.Message) -> None:
         await self.send_message(f"A{'n' if self.name[0] in 'aeiou' else ''} {self.name} is starting.\n"
                                 f"{self.min_players}-{self.max_players} players are needed.\n"
-                                f"You have {self.time_left}s to /join.")
+                                f"{self.time_left}s to /join.")
         await self.join(message)
         while True:
             await asyncio.sleep(1)
@@ -403,11 +411,12 @@ class ChaosGame(ClassicGame):
     async def send_turn_message(self) -> None:
         await self.send_message(
             f"Turn: {self.players_in_game[0].mention}\n"
-            f"Your word must start with _{self.current_word[-1].upper()}_ "
-            f"and contain *at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}*.\n"
-            f"You have *{self.time_limit}s* to answer.\n"
+            f"Your word must start with <i>{self.current_word[-1].upper()}</i> and "
+            f"contain <b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
+            f"You have <b>{self.time_limit}s</b> to answer.\n"
             f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}"
+            f"Total words: {self.turns}",
+            parse_mode=types.ParseMode.HTML
         )
         self.answered = False
         self.accepting_answers = True
@@ -446,7 +455,7 @@ class ChaosGame(ClassicGame):
                 await self.send_message(text.rstrip())
                 break
         else:
-            await on9bot.send_message(self.group_id, "/forceskip I'm done")
+            await on9bot.send_message(self.group_id, "/forceskip bey")
             await asyncio.sleep(1)
             self.time_left = 0
 
@@ -467,7 +476,8 @@ class ChaosGame(ClassicGame):
             if self.time_left > 0:
                 return
             self.accepting_answers = False
-            await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!")
+            await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!",
+                                    parse_mode=types.ParseMode.HTML)
             del self.players_in_game[0]
             if len(self.players_in_game) == 1:
                 self.end_time = datetime.now().replace(microsecond=0)
@@ -475,10 +485,11 @@ class ChaosGame(ClassicGame):
                 await self.send_message(
                     f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
                     f"Total words: {self.turns}"
-                    + (f"\nLongest word: _{self.longest_word.capitalize()}_ from "
+                    + (f"\nLongest word: <i>{self.longest_word.capitalize()}</i> from "
                        f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
                        if self.longest_word else "")
-                    + f"\nGame length: `{str(int(td.total_seconds()) // 3600).zfill(2)}{str(td)[-6:]}`"
+                    + f"\nGame length: <code>{int(td.total_seconds()) // 3600:02}{str(td)[-6:]}</code>",
+                    parse_mode=types.ParseMode.HTML
                 )
                 del GAMES[self.group_id]
                 return True
@@ -492,11 +503,12 @@ class ChosenFirstLetterGame(ClassicGame):
     async def send_turn_message(self) -> None:
         await self.send_message(
             f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
-            f"Your word must start with _{self.current_word.upper()}_ "
-            f"and contain *at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}*.\n"
-            f"You have *{self.time_limit}s* to answer.\n"
+            f"Your word must start with <i>{self.current_word.upper()}</i> and "
+            f"contain <b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
+            f"You have <b>{self.time_limit}s</b> to answer.\n"
             f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}"
+            f"Total words: {self.turns}",
+            parse_mode=types.ParseMode.HTML
         )
         self.answered = False
         self.accepting_answers = True
@@ -535,7 +547,7 @@ class ChosenFirstLetterGame(ClassicGame):
                 await self.send_message(text.rstrip())
                 break
         else:
-            await on9bot.send_message(self.group_id, "/forceskip I'm done")
+            await on9bot.send_message(self.group_id, "/forceskip bey")
             await asyncio.sleep(1)
             self.time_left = 0
 
@@ -582,7 +594,7 @@ class ChosenFirstLetterGame(ClassicGame):
         while len(self.current_word) < self.min_letters_limit:
             self.current_word = random.choice(WORDS_LI[random.choice(ascii_lowercase)])
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The chosen first letter is _{self.current_word.upper()}_.\n\n"
+        await self.send_message(f"The chosen first letter is <i>{self.current_word.upper()}</i>.\n\n"
                                 "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
 
 
@@ -596,12 +608,13 @@ class BannedLettersGame(ClassicGame):
     async def send_turn_message(self) -> None:
         await self.send_message(
             f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
-            f"Your word must start with _{self.current_word[-1].upper()}_, "
-            f"*exclude* _{', '.join(c.upper() for c in self.banned_letters)}_ "
-            f"and include *at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}*.\n"
-            f"You have *{self.time_limit}s* to answer.\n"
+            f"Your word must start with <i>{self.current_word[-1].upper()}</i>, "
+            f"<b>exclude</b> <i>{', '.join(c.upper() for c in self.banned_letters)}</i> and "
+            f"include <b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
+            f"You have <b>{self.time_limit}s</b> to answer.\n"
             f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}"
+            f"Total words: {self.turns}",
+            parse_mode=types.ParseMode.HTML
         )
         self.answered = False
         self.accepting_answers = True
@@ -642,7 +655,7 @@ class BannedLettersGame(ClassicGame):
                 await self.send_message(text.rstrip())
                 break
         else:
-            await on9bot.send_message(self.group_id, "/forceskip I'm done")
+            await on9bot.send_message(self.group_id, "/forceskip bey")
             await asyncio.sleep(1)
             self.time_left = 0
 
@@ -705,9 +718,10 @@ class BannedLettersGame(ClassicGame):
             self.current_word = random.choice(WORDS_LI[random.choice(unbanned)])
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n"
-                                f"Banned letters: _{', '.join(c.upper() for c in self.banned_letters)}_\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
+        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n"
+                                f"Banned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>\n\n"
+                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+                                parse_mode=types.ParseMode.HTML)
 
 
 class RequiredLetterGame(ClassicGame):
@@ -720,12 +734,13 @@ class RequiredLetterGame(ClassicGame):
     async def send_turn_message(self) -> None:
         await self.send_message(
             f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
-            f"Your word must start with _{self.current_word[-1].upper()}_, "
-            f"*include* _{self.required_letter.upper()}_ "
-            f"and *at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}*.\n"
-            f"You have *{self.time_limit}s* to answer.\n"
+            f"Your word must start with <i>{self.current_word[-1].upper()}</i>, "
+            f"<b>include</b> <i>{self.required_letter.upper()}</i> and "
+            f"<b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
+            f"You have <b>{self.time_limit}s</b> to answer.\n"
             f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}"
+            f"Total words: {self.turns}",
+            parse_mode=types.ParseMode.HTML
         )
         self.answered = False
         self.accepting_answers = True
@@ -767,7 +782,7 @@ class RequiredLetterGame(ClassicGame):
                 await self.send_message(text.rstrip())
                 break
         else:
-            await on9bot.send_message(self.group_id, "/forceskip I'm done")
+            await on9bot.send_message(self.group_id, "/forceskip bey")
             await asyncio.sleep(1)
             self.time_left = 0
 
@@ -821,8 +836,9 @@ class RequiredLetterGame(ClassicGame):
         self.used_words.add(self.current_word)
         self.required_letter = random.choice([c for c in ascii_lowercase if c != self.current_word[-1]])
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
+        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+                                parse_mode=types.ParseMode.HTML)
 
 
 class EliminationGame(ClassicGame):
@@ -850,19 +866,19 @@ class EliminationGame(ClassicGame):
             if len(players) <= 10:
                 for i, p in enumerate(players, start=1):
                     t = f"{i}. {p.name}: {p.letter_count}\n"
-                    if p == show_player:
+                    if p is show_player:
                         t = "> " + t
                     text += t
             elif players.index(show_player) <= 5 or players.index(show_player) >= len(players) - 4:
                 for i, p in enumerate(players[:5], start=1):
                     t = f"{i}. {p.name}: {p.letter_count}\n"
-                    if p == show_player:
+                    if p is show_player:
                         t = "> " + t
                     text += t
                 text += "...\n"
                 for i, p in enumerate(players[-5:], start=len(players) - 4):
                     t = f"{i}. {p.name}: {p.letter_count}\n"
-                    if p == show_player:
+                    if p is show_player:
                         t = "> " + t
                     text += t
             else:
@@ -880,9 +896,10 @@ class EliminationGame(ClassicGame):
         await self.send_message(
             (f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
              if self.turns_until_elimination > 1 else f"Turn: {self.players_in_game[0].mention}\n")
-            + f"Your word must start with _{self.current_word[-1].upper()}_.\n"
-              f"You have *{self.time_limit}s* to answer.\n\n" + "Leaderboard:\n"
-            + self.get_leaderboard(show_player=self.players_in_game[0])
+            + f"Your word must start with <i>{self.current_word[-1].upper()}</i>.\n"
+              f"You have <b>{self.time_limit}s</b> to answer.\n\n" + "Leaderboard:\n"
+            + self.get_leaderboard(show_player=self.players_in_game[0]),
+            parse_mode=types.ParseMode.HTML
         )
         self.answered = False
         self.accepting_answers = True
@@ -917,9 +934,11 @@ class EliminationGame(ClassicGame):
         self.current_word = random.choice(WORDS_LI[random.choice(ascii_lowercase)])
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
-        await self.send_message("Round 1 is starting...\n\nLeaderboard:\n" + self.get_leaderboard())
+        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+                                parse_mode=types.ParseMode.HTML)
+        await self.send_message("Round 1 is starting...\n\nLeaderboard:\n" + self.get_leaderboard(),
+                                parse_mode=types.ParseMode.HTML)
 
     async def running_phase(self) -> Optional[bool]:
         if not self.answered:
@@ -927,7 +946,8 @@ class EliminationGame(ClassicGame):
             if self.time_left > 0:
                 return
             self.accepting_answers = False
-            await self.send_message(f"{self.players_in_game[0].mention} ran out of time!")
+            await self.send_message(f"{self.players_in_game[0].mention} ran out of time!",
+                                    parse_mode=types.ParseMode.HTML)
         self.players_in_game.append(self.players_in_game.pop(0))
         self.turns_until_elimination -= 1
         if not self.turns_until_elimination:
@@ -936,7 +956,8 @@ class EliminationGame(ClassicGame):
             await self.send_message(
                 f"Round {self.round} completed.\n\nLeaderboard:\n" + self.get_leaderboard() + "\n\n"
                 + ", ".join(p.mention for p in eliminated) + " " + ("is" if len(eliminated) == 1 else "are")
-                + f" eliminated for having the lowest score of {min_score}."
+                + f" eliminated for having the lowest score of {min_score}.",
+                parse_mode=types.ParseMode.HTML
             )
             self.players_in_game = [p for p in self.players_in_game if p not in eliminated]
             if len(self.players_in_game) <= 1:
@@ -946,16 +967,18 @@ class EliminationGame(ClassicGame):
                     f"{(self.players_in_game[0].mention if self.players_in_game else 'No one')} won the game out of "
                     f"{len(self.players)} players!\n"
                     f"Total words: {self.turns}"
-                    + (f"\nLongest word: _{self.longest_word.capitalize()}_ from "
+                    + (f"\nLongest word: <i>{self.longest_word.capitalize()}</i> from "
                        f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
                        if self.longest_word else "")
-                    + f"\nGame length: `{str(int(td.total_seconds()) // 3600).zfill(2)}{str(td)[-6:]}`"
+                    + f"\nGame length: <code>{int(td.total_seconds()) // 3600:02}{str(td)[-6:]}</code>",
+                    parse_mode=types.ParseMode.HTML
                 )
                 del GAMES[self.group_id]
                 return True
             self.round += 1
             self.turns_until_elimination = len(self.players_in_game)
-            await self.send_message(f"Round {self.round} is starting...\n\nLeaderboard:\n" + self.get_leaderboard())
+            await self.send_message(f"Round {self.round} is starting...\n\nLeaderboard:\n" + self.get_leaderboard(),
+                                    parse_mode=types.ParseMode.HTML)
         await self.send_turn_message()
 
 
@@ -974,13 +997,14 @@ class MixedEliminationGame(EliminationGame):
         if self.turns_until_elimination > 1:
             text += f" (Next: {self.players_in_game[1].name})"
         text += (f"\nYour word must start with "
-                 f"_{self.current_word[0 if self.game_mode is ChosenFirstLetterGame else -1].upper()}_")
+                 f"<i>{self.current_word[0 if self.game_mode is ChosenFirstLetterGame else -1].upper()}</i>")
         if self.game_mode is BannedLettersGame:
-            text += f" and *exclude* _{', '.join(c.upper() for c in self.banned_letters)}_"
+            text += f" and <b>exclude</b> <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
         elif self.game_mode is RequiredLetterGame:
-            text += f" and *include* _{self.required_letter.upper()}_"
-        text += ".\n" + f"You have *{self.time_limit}s* to answer.\n\n" + "Leaderboard:\n"
-        await self.send_message(text + self.get_leaderboard(show_player=self.players_in_game[0]))
+            text += f" and <b>include</b> <i>{self.required_letter.upper()}</i>"
+        text += ".\n" + f"You have <b>{self.time_limit}s</b> to answer.\n\n" + "Leaderboard:\n"
+        await self.send_message(text + self.get_leaderboard(show_player=self.players_in_game[0]),
+                                parse_mode=types.ParseMode.HTML)
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
@@ -1027,11 +1051,11 @@ class MixedEliminationGame(EliminationGame):
     async def running_initialization(self) -> None:
         self.turns_until_elimination = len(self.players)
         self.game_mode = random.choice(self.game_modes)
-        text = f"Round 1 is starting...\nMode: *{self.game_mode.name.capitalize()}*"
+        text = f"Round 1 is starting...\nMode: <b>{self.game_mode.name.capitalize()}</b>"
         if self.game_mode is not BannedLettersGame:
             self.current_word = random.choice(WORDS_LI[random.choice(ascii_lowercase)])
         if self.game_mode is ChosenFirstLetterGame:
-            text += f"\nThe chosen first letter is _{self.current_word[0].upper()}_."
+            text += f"\nThe chosen first letter is <i>{self.current_word[0].upper()}</i>."
         elif self.game_mode is BannedLettersGame:
             alphabets = list(ascii_lowercase)
             for i in range(random.randint(2, 4)):
@@ -1045,15 +1069,17 @@ class MixedEliminationGame(EliminationGame):
             self.current_word = random.choice(WORDS_LI[random.choice(unbanned)])
             while any(c in self.current_word for c in self.banned_letters):
                 self.current_word = random.choice(WORDS_LI[random.choice(unbanned)])
-            text += f"\nBanned letters: _{', '.join(c.upper() for c in self.banned_letters)}_"
+            text += f"\nBanned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
         elif self.game_mode is RequiredLetterGame:
             self.required_letter = random.choice([c for c in ascii_lowercase if c != self.current_word[-1]])
         if self.game_mode is not ChosenFirstLetterGame:
             self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is _{self.current_word.capitalize()}_.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
-        await self.send_message(text + "\n\nLeaderboard:\n" + self.get_leaderboard())
+        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+                                parse_mode=types.ParseMode.HTML)
+        await self.send_message(text + "\n\nLeaderboard:\n" + self.get_leaderboard(),
+                                parse_mode=types.ParseMode.HTML)
 
     async def running_phase(self) -> Optional[bool]:
         if not self.answered:
@@ -1061,7 +1087,8 @@ class MixedEliminationGame(EliminationGame):
             if self.time_left > 0:
                 return
             self.accepting_answers = False
-            await self.send_message(f"{self.players_in_game[0].mention} ran out of time!")
+            await self.send_message(f"{self.players_in_game[0].mention} ran out of time!",
+                                    parse_mode=types.ParseMode.HTML)
         self.players_in_game.append(self.players_in_game.pop(0))
         self.turns_until_elimination -= 1
         if not self.turns_until_elimination:
@@ -1070,7 +1097,8 @@ class MixedEliminationGame(EliminationGame):
             await self.send_message(
                 f"Round {self.round} completed.\n\nLeaderboard:\n" + self.get_leaderboard() + "\n\n"
                 + ", ".join(p.mention for p in eliminated) + " " + ("is" if len(eliminated) == 1 else "are")
-                + f" eliminated for having the lowest score of {min_score}."
+                + f" eliminated for having the lowest score of {min_score}.",
+                parse_mode=types.ParseMode.HTML
             )
             self.players_in_game = [p for p in self.players_in_game if p not in eliminated]
             if len(self.players_in_game) <= 1:
@@ -1080,20 +1108,21 @@ class MixedEliminationGame(EliminationGame):
                     f"{(self.players_in_game[0].mention if self.players_in_game else 'No one')} won the game out of "
                     f"{len(self.players)} players!\n"
                     f"Total words: {self.turns}"
-                    + (f"\nLongest word: _{self.longest_word.capitalize()}_ from "
+                    + (f"\nLongest word: <i>{self.longest_word.capitalize()}</i> from "
                        f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
                        if self.longest_word else "")
-                    + f"\nGame length: `{str(int(td.total_seconds()) // 3600).zfill(2)}{str(td)[-6:]}`"
+                    + f"\nGame length: <code>{int(td.total_seconds()) // 3600:02}{str(td)[-6:]}</code>",
+                    parse_mode=types.ParseMode.HTML
                 )
                 del GAMES[self.group_id]
                 return True
             self.round += 1
             self.turns_until_elimination = len(self.players_in_game)
             self.game_mode = random.choice([i for i in self.game_modes if i is not self.game_mode])
-            text = f"Round {self.round} is starting...\nMode: *{self.game_mode.name.capitalize()}*"
+            text = f"Round {self.round} is starting...\nMode: <b>{self.game_mode.name.capitalize()}</b>"
             if self.game_mode is ChosenFirstLetterGame:
                 self.current_word = self.current_word[-1]
-                text += f"\nThe chosen first letter is _{self.current_word[0].upper()}_."
+                text += f"\nThe chosen first letter is <i>{self.current_word[0].upper()}</i>."
             elif self.game_mode is BannedLettersGame:
                 alphabets = list(ascii_lowercase)
                 alphabets.remove(self.current_word[-1])
@@ -1104,8 +1133,9 @@ class MixedEliminationGame(EliminationGame):
                     else:
                         alphabets.remove(self.banned_letters[-1])
                 self.banned_letters.sort()
-                text += f"\nBanned letters: _{', '.join(c.upper() for c in self.banned_letters)}_"
+                text += f"\nBanned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
             elif self.game_mode is RequiredLetterGame:
                 self.required_letter = random.choice([c for c in ascii_lowercase if c != self.current_word[-1]])
-            await self.send_message(text + "\n\nLeaderboard:\n" + self.get_leaderboard())
+            await self.send_message(text + "\n\nLeaderboard:\n" + self.get_leaderboard(),
+                                    parse_mode=types.ParseMode.HTML)
         await self.send_turn_message()

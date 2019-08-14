@@ -10,7 +10,7 @@ from uuid import uuid4
 from aiogram import executor, types
 from aiogram.types.message import ContentTypes
 from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
-from aiogram.utils.markdown import escape_md
+from aiogram.utils.markdown import quote_html
 
 from constants import (bot, dp, BOT_ID, ON9BOT_ID, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool,
                        PROVIDER_TOKEN, WORDS, WORDS_LI, GameState, GameSettings, amt_donated)
@@ -96,7 +96,10 @@ async def cmd_help(message: types.Message) -> None:
         "Classic gameplay but a specific letter must be present in answers.\n\n"
         "/startelim - Elimination game\n"
         "Each player has a score, which is their cumulative word length. After each player has played a round, the "
-        "player(s) with the lowest score get eliminated from the game.",
+        "player(s) with the lowest score get eliminated from the game.\n\n"
+        "/startmelim - Mixed elimination game (Donation reward)\n"
+        "Elimination game with four modes: classic, chosen first letter, banned letters and require letter. Modes "
+        "switch every round.",
         disable_web_page_preview=True
     )
 
@@ -449,20 +452,20 @@ async def cmd_stats(message: types.Message) -> None:
     async with pool.acquire() as conn:
         res = await conn.fetchrow("SELECT * FROM player WHERE user_id = $1;", user.id)
     if not res:
-        await message.reply(f"No statistics for [{user.full_name}](tg://user?id={user.id})!")
+        await message.reply(f"No statistics for {user.get_mention(as_html=True)}!", parse_mode=types.ParseMode.HTML)
         return
     await message.reply(
         f"\U0001f4ca Statistics for "
-        f"[{escape_md(user.full_name)}"
-        + (" \u2b50\ufe0f" if user.id in VIP or bool(await amt_donated(user.id)) else "")
-        + f"](tg://user?id={user.id}):\n"
-          f"*{res['game_count']}* games played\n"
-          f"*{res['win_count']} ("
-          f"{'0%' if res['game_count'] == res['win_count'] == 0 else format(res['win_count'] / res['game_count'], '.0%')}"
-          ")* games won\n"
-          f"*{res['word_count']}* total words played\n"
-          f"*{res['letter_count']}* total letters played"
-        + (f"\nLongest word used: *{res['longest_word'].capitalize()}*" if res["longest_word"] else "")
+        + user.get_mention(name=user.full_name + (" \u2b50\ufe0f" if user.id in VIP or bool(await amt_donated(user.id))
+                                                  else ""), as_html=True)
+        + f":\n"
+          f"<b>{res['game_count']}</b> games played\n"
+          f"<b>{res['win_count']} ("
+          f"{'0%' if not res['win_count'] else format(res['win_count'] / res['game_count'], '.0%')})</b> games won\n"
+          f"<b>{res['word_count']}</b> total words played\n"
+          f"<b>{res['letter_count']}</b> total letters played"
+        + (f"\nLongest word used: <b>{res['longest_word'].capitalize()}</b>" if res["longest_word"] else ""),
+        parse_mode=types.ParseMode.HTML
     )
 
 
@@ -476,11 +479,12 @@ async def cmd_groupstats(message: types.Message) -> None:
 SELECT COUNT(DISTINCT user_id), COUNT(DISTINCT game_id), SUM(word_count), SUM(letter_count)
     FROM gameplayer
     WHERE group_id = $1;""", message.chat.id)
-    await message.reply(f"\U0001f4ca Statistics for *{escape_md(message.chat.title)}*\n"
-                        f"*{player_count}* total players\n"
-                        f"*{game_count}* games played\n"
-                        f"*{word_count}* total words played\n"
-                        f"*{letter_count}* total letters played")
+    await message.reply(f"\U0001f4ca Statistics for <b>{quote_html(message.chat.title)}</b>\n"
+                        f"<b>{player_count}</b> total players\n"
+                        f"<b>{game_count}</b> games played\n"
+                        f"<b>{word_count}</b> total words played\n"
+                        f"<b>{letter_count}</b> total letters played",
+                        parse_mode=types.ParseMode.HTML)
 
 
 @dp.message_handler(commands="globalstats")
@@ -588,16 +592,19 @@ VALUES
                         f"Donation id: #on9wcbot\_{donation_id}",
                         reply=False)
     await bot.send_message(ADMIN_GROUP_ID,
-                           f"Received donation of {amt} HKD from "
-                           f"[{message.from_user.full_name}](tg://user?id={message.from_user.id}) "
+                           f"Received donation of {amt} HKD from {message.from_user.get_mention(as_html=True)} "
                            f"(id: `{message.from_user.id}`).\n"
                            f"Donation id: #on9wcbot\_{donation_id}")
 
 
 @dp.message_handler(is_owner=True, commands="sql")
 async def cmd_sql(message: types.Message) -> None:
-    async with pool.acquire() as conn:
-        res = await conn.fetch(message.get_full_command()[1])
+    try:
+        async with pool.acquire() as conn:
+            res = await conn.fetch(message.get_full_command()[1])
+    except Exception as e:
+        await message.reply(f"`{e.__class__.__name__}: {str(e)}`")
+        return
     if not res:
         await message.reply("No results returned.")
         return

@@ -14,7 +14,7 @@ dp = Dispatcher(bot)
 BOT_ID = int(TOKEN.partition(":")[0])
 with open("on9bot_token.txt") as f:
     ON9BOT_TOKEN = f.readline().strip()
-on9bot = Bot(ON9BOT_TOKEN, parse_mode=types.ParseMode.MARKDOWN)
+on9bot = Bot(ON9BOT_TOKEN)
 ON9BOT_ID = int(ON9BOT_TOKEN.partition(":")[0])
 OWNER_ID = 463998526
 #      Jono      On9 Bot    Jeff       Luna       JS         MK
