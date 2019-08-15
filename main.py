@@ -480,7 +480,7 @@ SELECT COUNT(DISTINCT user_id), COUNT(DISTINCT game_id), SUM(word_count), SUM(le
     FROM gameplayer
     WHERE group_id = $1;""", message.chat.id)
     await message.reply(f"\U0001f4ca Statistics for <b>{quote_html(message.chat.title)}</b>\n"
-                        f"<b>{player_count}</b> total players\n"
+                        f"<b>{player_count}</b> players\n"
                         f"<b>{game_count}</b> games played\n"
                         f"<b>{word_count}</b> total words played\n"
                         f"<b>{letter_count}</b> total letters played",
@@ -495,8 +495,8 @@ async def cmd_globalstats(message: types.Message) -> None:
             "SELECT COUNT(*), SUM(word_count), SUM(letter_count) FROM player;"
         )
     await message.reply("\U0001f4ca Global statistics\n"
-                        f"*{group_count}* total groups\n"
-                        f"*{player_count}* total players\n"
+                        f"*{group_count}* groups\n"
+                        f"*{player_count}* players\n"
                         f"*{game_count}* games played\n"
                         f"*{word_count}* total words played\n"
                         f"*{letter_count}* total letters played")
@@ -533,12 +533,12 @@ async def send_donate_msg(message: types.Message) -> None:
         "Select one of the following options or type in the desired amount in HKD (e.g. `/donate 42.42`).\n\n"
         "Donation rewards:\n"
         "Any amount: \u2b50\ufe0f is displayed next to your name during games.\n"
-        "15 HKD (cumulative): Search words in inline queries (e.g. `@on9wordchainbot test`)\n"
+        "10 HKD (cumulative): Search words in inline queries (e.g. `@on9wordchainbot test`)\n"
         "30 HKD (cumulative): Start mixed elimination games (`/startmelim`)\n",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [
                 types.InlineKeyboardButton("10 HKD", callback_data="donate:10"),
-                types.InlineKeyboardButton("15 HKD", callback_data="donate:20"),
+                types.InlineKeyboardButton("20 HKD", callback_data="donate:20"),
                 types.InlineKeyboardButton("30 HKD", callback_data="donate:30")
             ],
             [
@@ -593,8 +593,9 @@ VALUES
                         reply=False)
     await bot.send_message(ADMIN_GROUP_ID,
                            f"Received donation of {amt} HKD from {message.from_user.get_mention(as_html=True)} "
-                           f"(id: `{message.from_user.id}`).\n"
-                           f"Donation id: #on9wcbot\_{donation_id}")
+                           f"(id: <code>{message.from_user.id}</code>).\n"
+                           f"Donation id: #on9wcbot\_{donation_id}",
+                           parse_mode=types.ParseMode.HTML)
 
 
 @dp.message_handler(is_owner=True, commands="sql")
@@ -643,7 +644,7 @@ async def message_handler(message: types.Message) -> None:
 @dp.inline_handler()
 async def inline_handler(inline_query: types.InlineQuery):
     text = inline_query.query.lower()
-    if not text or inline_query.from_user.id not in VIP and (await amt_donated(inline_query.from_user.id)) < 15:
+    if not text or inline_query.from_user.id not in VIP and (await amt_donated(inline_query.from_user.id)) < 10:
         await inline_query.answer([
             types.InlineQueryResultArticle(
                 id=str(uuid4()), title="Start a classic game", description="/startclassic@on9wordchainbot",
