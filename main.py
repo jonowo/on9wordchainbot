@@ -1,12 +1,15 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, getcontext, ROUND_HALF_UP, InvalidOperation
 from random import seed
 from string import ascii_lowercase
 from time import time
 from uuid import uuid4
 
+import aiofiles
+import aiofiles.os  # necessary
+import matplotlib.pyplot as plt
 from aiogram import executor, types
 from aiogram.types.message import ContentTypes
 from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
@@ -500,6 +503,116 @@ async def cmd_globalstats(message: types.Message) -> None:
                         f"*{game_count}* games played\n"
                         f"*{word_count}* total words played\n"
                         f"*{letter_count}* total letters played")
+
+
+@dp.message_handler(is_vip=True, commands=["trend", "trends"])
+async def cmd_trends(message: types.Message) -> None:
+    try:
+        days = int(message.get_args() or 7)
+        assert days > 1, "smh"
+    except (ValueError, AssertionError) as e:
+        await message.reply(f"`{e.__class__.__name__}: {str(e)}`")
+        return
+    d = datetime.now().date()
+    tp = [d - timedelta(days=i) for i in range(days - 1, -1, -1)]
+    tp_str = [f"{i.day}/{i.month}" for i in tp]
+    async with pool.acquire() as conn:
+        daily_games = dict(await conn.fetch("""\
+SELECT start_time::DATE d, COUNT(start_time::DATE)
+    FROM game
+    WHERE start_time::DATE >= $1
+    GROUP BY d
+    ORDER BY d;""", d - timedelta(days=days - 1)))
+        active_players = dict(await conn.fetch("""\
+SELECT game.start_time::DATE d, COUNT(DISTINCT gameplayer.user_id)
+    FROM gameplayer
+    INNER JOIN game ON gameplayer.game_id = game.id
+    WHERE game.start_time::DATE >= $1
+    GROUP BY d
+    ORDER BY d;""", d - timedelta(days=days - 1)))
+        active_groups = dict(await conn.fetch("""\
+SELECT start_time::DATE d, COUNT(DISTINCT group_id)
+    FROM game
+    WHERE game.start_time::DATE >= $1
+    GROUP BY d
+    ORDER BY d;""", d - timedelta(days=days - 1)))
+        cumulative_groups = dict(await conn.fetch("""\
+SELECT *
+    FROM (
+        SELECT d, SUM(count) OVER (ORDER BY d)
+            FROM (
+                SELECT d, COUNT(group_id)
+                    FROM (
+                        SELECT DISTINCT group_id, MIN(start_time::DATE) d
+                            FROM game
+                            GROUP BY group_id
+                    ) gd
+                    GROUP BY d
+            ) dg
+    ) ds
+    WHERE d >= $1;""", d - timedelta(days=days - 1)))
+        dt = d - timedelta(days=days)
+        for i in range(days):
+            dt += timedelta(days=1)
+            if dt not in cumulative_groups:
+                if not i:
+                    cumulative_groups[dt] = await conn.fetchval(
+                        "SELECT COUNT(DISTINCT group_id) FROM game WHERE start_time::DATE <= $1;", dt
+                    )
+                else:
+                    cumulative_groups[dt] = cumulative_groups[dt - timedelta(days=1)]
+        cumulative_players = dict(await conn.fetch("""\
+SELECT *
+    FROM (
+        SELECT d, SUM(count) OVER (ORDER BY d)
+            FROM (
+                SELECT d, COUNT(user_id)
+                    FROM (
+                        SELECT DISTINCT user_id, MIN(start_time::DATE) d
+                            FROM gameplayer
+                            INNER JOIN game ON game_id = game.id
+                            GROUP BY user_id
+                    ) ud
+                    GROUP BY d
+            ) du
+    ) ds
+    WHERE d >= $1;""", d - timedelta(days=days - 1)))
+        dt = d - timedelta(days=days)
+        for i in range(days):
+            dt += timedelta(days=1)
+            if dt not in cumulative_players:
+                if not i:
+                    cumulative_players[dt] = await conn.fetchval("""\
+    SELECT COUNT(DISTINCT user_id)
+        FROM gameplayer
+        INNER JOIN game ON game_id = game.id
+        WHERE start_time <= $1;""", dt)
+                else:
+                    cumulative_players[dt] = cumulative_players[dt - timedelta(days=1)]
+    plt.figure(figsize=(15, 8))
+    plt.suptitle(f"Trends in the Past {days} Days", size=25)
+    plt.subplot(231)
+    plt.title("Games Played", size=18)
+    plt.plot(tp_str, [daily_games.get(i, 0) for i in tp])
+    plt.ylim(ymin=0)
+    plt.subplot(232)
+    plt.title("Active Groups", size=18)
+    plt.plot(tp_str, [active_groups.get(i, 0) for i in tp])
+    plt.ylim(ymin=0)
+    plt.subplot(233)
+    plt.title("Active Players", size=18)
+    plt.plot(tp_str, [active_players.get(i, 0) for i in tp])
+    plt.ylim(ymin=0)
+    plt.subplot(235)
+    plt.title("Cumulative Groups", size=18)
+    plt.plot(tp_str, [cumulative_groups[i] for i in tp])
+    plt.subplot(236)
+    plt.title("Cumulative Players", size=18)
+    plt.plot(tp_str, [cumulative_players[i] for i in tp])
+    plt.savefig("trends.jpg", bbox_inches="tight")
+    async with aiofiles.open("trends.jpg", "rb") as f:
+        await message.reply_photo(f)
+    await aiofiles.os.remove("trends.jpg")
 
 
 @dp.message_handler(commands="donate")

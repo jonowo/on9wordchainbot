@@ -93,6 +93,16 @@ class OwnerFilter(BoundFilter):
         return message.from_user.id == OWNER_ID
 
 
+class VIPFilter(BoundFilter):
+    key = "is_vip"
+
+    def __init__(self, is_vip: bool) -> None:
+        self.is_vip = is_vip
+
+    async def check(self, message: types.Message) -> bool:
+        return message.from_user.id in VIP
+
+
 class AdminFilter(BoundFilter):
     key = "is_admin"
 
@@ -106,6 +116,7 @@ class AdminFilter(BoundFilter):
 
 dp.filters_factory.bind(GroupFilter)
 dp.filters_factory.bind(OwnerFilter)
+dp.filters_factory.bind(VIPFilter)
 dp.filters_factory.bind(AdminFilter)
 
 

@@ -590,12 +590,11 @@ class ChosenFirstLetterGame(ClassicGame):
         await self.send_message(text.rstrip())
 
     async def running_initialization(self) -> None:
-        self.current_word = random.choice(WORDS_LI[random.choice(ascii_lowercase)])
-        while len(self.current_word) < self.min_letters_limit:
-            self.current_word = random.choice(WORDS_LI[random.choice(ascii_lowercase)])
+        self.current_word = random.choice(ascii_lowercase)
         self.start_time = datetime.now().replace(microsecond=0)
         await self.send_message(f"The chosen first letter is <i>{self.current_word.upper()}</i>.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]))
+                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+                                parse_mode=types.ParseMode.HTML)
 
 
 class BannedLettersGame(ClassicGame):
