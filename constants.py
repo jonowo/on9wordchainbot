@@ -6,6 +6,13 @@ import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.dispatcher.filters import BoundFilter
 
+try:
+    import uvloop
+except ImportError:
+    pass
+else:
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
 loop = asyncio.get_event_loop()
 with open("token.txt") as f:
     TOKEN = f.readline().strip()
@@ -39,13 +46,13 @@ WORDS = {i: set(WORDS_LI[i]) for i in ascii_lowercase}
 del w
 
 
-async def f():
+async def init():
     print("Connecting to database...")
     global pool
     pool = await asyncpg.create_pool(DB_URI)
 
 
-loop.run_until_complete(f())
+loop.run_until_complete(init())
 
 
 class GameState:
@@ -114,10 +121,8 @@ class AdminFilter(BoundFilter):
                 or (await bot.get_chat_member(message.chat.id, message.from_user.id)).is_chat_admin())
 
 
-dp.filters_factory.bind(GroupFilter)
-dp.filters_factory.bind(OwnerFilter)
-dp.filters_factory.bind(VIPFilter)
-dp.filters_factory.bind(AdminFilter)
+for f in (GroupFilter, OwnerFilter, VIPFilter, AdminFilter):
+    dp.filters_factory.bind(f)
 
 
 async def amt_donated(user_id: int) -> int:

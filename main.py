@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta
 from decimal import Decimal, getcontext, ROUND_HALF_UP, InvalidOperation
 from random import seed
@@ -14,6 +15,7 @@ from aiogram import executor, types
 from aiogram.types.message import ContentTypes
 from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
 from aiogram.utils.markdown import quote_html
+from matplotlib.ticker import MaxNLocator
 
 from constants import (bot, dp, BOT_ID, ON9BOT_ID, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool,
                        PROVIDER_TOKEN, WORDS, WORDS_LI, GameState, GameSettings, amt_donated)
@@ -589,26 +591,50 @@ SELECT *
         WHERE start_time <= $1;""", dt)
                 else:
                     cumulative_players[dt] = cumulative_players[dt - timedelta(days=1)]
+        game_mode_play_cnt = await conn.fetch("""\
+SELECT COUNT(game_mode), game_mode
+    FROM game
+    WHERE start_time::DATE >= $1
+    GROUP BY game_mode
+    ORDER BY count;""", d - timedelta(days=days - 1))
+        total_games = sum(i[0] for i in game_mode_play_cnt)
     plt.figure(figsize=(15, 8))
     plt.suptitle(f"Trends in the Past {days} Days", size=25)
-    plt.subplot(231)
+    sp = plt.subplot(231)
+    sp.yaxis.set_major_locator(MaxNLocator(integer=True))  # Force y-axis intervals to be integral
     plt.title("Games Played", size=18)
     plt.plot(tp_str, [daily_games.get(i, 0) for i in tp])
     plt.ylim(ymin=0)
-    plt.subplot(232)
+    sp = plt.subplot(232)
+    sp.yaxis.set_major_locator(MaxNLocator(integer=True))
     plt.title("Active Groups", size=18)
     plt.plot(tp_str, [active_groups.get(i, 0) for i in tp])
     plt.ylim(ymin=0)
-    plt.subplot(233)
+    sp = plt.subplot(233)
+    sp.yaxis.set_major_locator(MaxNLocator(integer=True))
     plt.title("Active Players", size=18)
     plt.plot(tp_str, [active_players.get(i, 0) for i in tp])
     plt.ylim(ymin=0)
-    plt.subplot(235)
+    plt.subplot(234)
+    labels = [i[1] for i in game_mode_play_cnt]
+    colors = ["dark maroon", "dark peach", "orange", "leather", "mustard", "teal", "french blue", "booger"][
+             8 - len(game_mode_play_cnt):]
+    slices, text = plt.pie([i[0] for i in game_mode_play_cnt],
+                           labels=[f"{i[0] / total_games:.1%} ({i[0]})" if i[0] / total_games >= 0.03
+                                   else "" for i in game_mode_play_cnt],
+                           colors=["xkcd:" + c for c in colors], startangle=90)
+    plt.legend(slices, labels, title="Game Modes Played", fontsize="x-small", loc="best")
+    plt.axis("equal")
+    sp = plt.subplot(235)
+    sp.yaxis.set_major_locator(MaxNLocator(integer=True))
     plt.title("Cumulative Groups", size=18)
     plt.plot(tp_str, [cumulative_groups[i] for i in tp])
-    plt.subplot(236)
+    sp = plt.subplot(236)
+    sp.yaxis.set_major_locator(MaxNLocator(integer=True))
     plt.title("Cumulative Players", size=18)
     plt.plot(tp_str, [cumulative_players[i] for i in tp])
+    while os.path.exists("trends.jpg"):
+        await asyncio.sleep(0.1)
     plt.savefig("trends.jpg", bbox_inches="tight")
     async with aiofiles.open("trends.jpg", "rb") as f:
         await message.reply_photo(f)
