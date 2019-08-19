@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import os
 from datetime import datetime, timedelta
 from decimal import Decimal, getcontext, ROUND_HALF_UP, InvalidOperation
@@ -24,7 +23,6 @@ from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, B
 
 seed(time())
 getcontext().rounding = ROUND_HALF_UP
-logging.basicConfig(level=logging.INFO)
 build_time = datetime.now().replace(microsecond=0)
 MAINT_MODE = False
 

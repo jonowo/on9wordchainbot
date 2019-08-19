@@ -1,4 +1,6 @@
 import asyncio
+import json
+import logging
 from string import ascii_lowercase
 
 import asyncpg
@@ -13,31 +15,30 @@ except ImportError:
 else:
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-loop = asyncio.get_event_loop()
-with open("token.txt") as f:
-    TOKEN = f.readline().strip()
-bot = Bot(TOKEN, loop, parse_mode=types.ParseMode.MARKDOWN)
-dp = Dispatcher(bot)
-BOT_ID = int(TOKEN.partition(":")[0])
-with open("on9bot_token.txt") as f:
-    ON9BOT_TOKEN = f.readline().strip()
-on9bot = Bot(ON9BOT_TOKEN)
-ON9BOT_ID = int(ON9BOT_TOKEN.partition(":")[0])
-OWNER_ID = 463998526
-#      Jono      On9 Bot    Jeff       Luna       JS         MK
-VIP = [OWNER_ID, 506548905, 106665913, 547398181, 190726372, 540933895]
-#            On9 Word Chain  HK Duker
-VIP_GROUP = [-1001333598796, -1001295361187]
-ADMIN_GROUP_ID = -1001141544515
-OFFICIAL_GROUP_ID = -1001333598796
-GAMES = {}
-with open("dburi.txt") as f:
-    DB_URI = f.readline().strip()
-pool = None
-with open("provider_token.txt") as f:
-    PROVIDER_TOKEN = f.readline().strip()
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-print("Fetching list of words...")
+with open("config.json") as f:
+    config = json.load(f)
+    TOKEN = config["TOKEN"]
+    ON9BOT_TOKEN = config["ON9BOT_TOKEN"]
+    DB_URI = config["DB_URI"]
+    PROVIDER_TOKEN = config["PROVIDER_TOKEN"]
+    OWNER_ID = config["OWNER_ID"]
+    ADMIN_GROUP_ID = config["ADMIN_GROUP_ID"]
+    OFFICIAL_GROUP_ID = config["OFFICIAL_GROUP_ID"]
+    VIP = config["VIP"]
+    VIP_GROUP = config["VIP_GROUP"]
+loop = asyncio.get_event_loop()
+BOT_ID = int(TOKEN.partition(":")[0])
+ON9BOT_ID = int(ON9BOT_TOKEN.partition(":")[0])
+bot = Bot(TOKEN, loop, parse_mode=types.ParseMode.MARKDOWN)
+on9bot = Bot(ON9BOT_TOKEN, loop)
+dp = Dispatcher(bot)
+GAMES = {}
+pool = None
+
+logger.info("Fetching list of words...")
 WORDS_LI = {i: [] for i in ascii_lowercase}
 w = requests.get("https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt").text.splitlines()
 for i in w:
@@ -46,13 +47,13 @@ WORDS = {i: set(WORDS_LI[i]) for i in ascii_lowercase}
 del w
 
 
-async def init():
-    print("Connecting to database...")
+async def db_init():
+    logger.info("Connecting to database...")
     global pool
     pool = await asyncpg.create_pool(DB_URI)
 
 
-loop.run_until_complete(init())
+loop.run_until_complete(db_init())
 
 
 class GameState:
