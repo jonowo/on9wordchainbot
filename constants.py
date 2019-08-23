@@ -40,9 +40,11 @@ pool = None
 
 logger.info("Fetching list of words...")
 WORDS_LI = {i: [] for i in ascii_lowercase}
-w = requests.get("https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt").text.splitlines()
+w = requests.get("https://raw.githubusercontent.com/dwyl/english-words/master/words.txt").text.splitlines()
 for i in w:
-    WORDS_LI[i[0]].append(i)
+    i = i.lower()
+    if i.isalpha():
+        WORDS_LI[i[0]].append(i)
 WORDS = {i: set(WORDS_LI[i]) for i in ascii_lowercase}
 del w
 

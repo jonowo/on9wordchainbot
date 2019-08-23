@@ -390,9 +390,13 @@ async def cmd_forceflee(message: types.Message) -> None:
 
 @dp.message_handler(is_group=True, is_owner=True, commands=["killgame", "killgaym"])
 async def cmd_killgame(message: types.Message) -> None:
-    group_id = message.chat.id
+    group_id = int(message.get_args() or message.chat.id)
     if group_id in GAMES:
         GAMES[group_id].state = GameState.KILLGAME
+        await asyncio.sleep(2)
+        if group_id in GAMES:
+            del GAMES[group_id]
+            await message.reply("Game ended forcibly.")
 
 
 @dp.message_handler(is_group=True, is_owner=True, commands="forceskip")
@@ -444,7 +448,7 @@ async def cmd_leave(message: types.Message) -> None:
     await message.chat.leave()
 
 
-@dp.message_handler(commands="stats")
+@dp.message_handler(commands=["stat", "stats", "stalk"])
 async def cmd_stats(message: types.Message) -> None:
     rmsg = message.reply_to_message
     if (message.chat.id < 0 and not message.get_command().partition("@")[2]
@@ -596,6 +600,8 @@ SELECT COUNT(game_mode), game_mode
     GROUP BY game_mode
     ORDER BY count;""", d - timedelta(days=days - 1))
         total_games = sum(i[0] for i in game_mode_play_cnt)
+    while os.path.exists("trends.jpg"):
+        await asyncio.sleep(0.1)
     plt.figure(figsize=(15, 8))
     plt.suptitle(f"Trends in the Past {days} Days", size=25)
     sp = plt.subplot(231)
@@ -631,9 +637,8 @@ SELECT COUNT(game_mode), game_mode
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))
     plt.title("Cumulative Players", size=18)
     plt.plot(tp_str, [cumulative_players[i] for i in tp])
-    while os.path.exists("trends.jpg"):
-        await asyncio.sleep(0.1)
     plt.savefig("trends.jpg", bbox_inches="tight")
+    plt.close("all")
     async with aiofiles.open("trends.jpg", "rb") as f:
         await message.reply_photo(f)
     await aiofiles.os.remove("trends.jpg")
@@ -853,7 +858,9 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
             GAMES[error.migrate_to_chat_id].group_id = error.migrate_to_chat_id
         async with pool.acquire() as conn:
             await conn.execute("UPDATE game SET group_id = $1 WHERE group_id = $2;\n"
-                               "UPDATE gameplayer SET group_id = $1 WHERE group_id = $2;",
+                               "UPDATE gameplayer SET group_id = $1 WHERE group_id = $2;\n"
+                               "DELETE FROM game WHERE group_id = $2;\n"
+                               "DELETE FROM gameplayer WHERE group_id = $2;",
                                error.migrate_to_chat_id, update.message.chat.id)
         return
     await bot.send_message(ADMIN_GROUP_ID,
@@ -883,4 +890,5 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+# TODO: /nextgame
 # TODO: achv
