@@ -16,8 +16,9 @@ from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
 from aiogram.utils.markdown import quote_html
 from matplotlib.ticker import MaxNLocator
 
-from constants import (bot, dp, BOT_ID, ON9BOT_ID, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool,
-                       PROVIDER_TOKEN, GameState, GameSettings, update_words, amt_donated, get_words, get_words_li)
+from constants import (bot, dp, BOT_ID, ON9BOT_ID, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID,
+                       WORD_ADDITION_CHANNEL_ID, GAMES, pool, PROVIDER_TOKEN, GameState, GameSettings, update_words,
+                       amt_donated, get_words, get_words_li)
 from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, RequiredLetterGame,
                   EliminationGame, MixedEliminationGame)
 
@@ -110,9 +111,10 @@ async def cmd_help(message: types.Message) -> None:
 @dp.message_handler(commands="info")
 async def cmd_info(message: types.Message) -> None:
     await message.reply(
-        "[Official channel](https://t.me/On9Updates)\n"
-        "[Official group](https://t.me/on9wordchain)\n"
-        "[GitHub repo: Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
+        "[Official Channel](https://t.me/On9Updates)\n"
+        "[Official Group](https://t.me/on9wordchain)\n"
+        "[Word Additions Channel](https://t.me/on9wcwa)\n"
+        "[GitHub Repo: Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
         "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English or Cantonese.\n",
         disable_web_page_preview=True
     )
@@ -162,7 +164,7 @@ async def cmd_exists(message: types.Message) -> None:
             word = message.reply_to_message.text.lower()
         else:
             await message.reply("Function: Check if I accept a word. "
-                                "Use /reqaddword if you want to request addition of words\n"
+                                "Use /reqaddword if you want to request addition of new words\n"
                                 "Usage: `/exists word`")
             return
     if word in get_words()[word[0]]:
@@ -765,7 +767,8 @@ async def cmd_reqaddwords(message: types.Message) -> None:
         return
     words_to_add = [w for w in set(message.get_args().lower().split()) if all(c in ascii_lowercase for c in w)]
     if not words_to_add:
-        await message.reply("Function: Request addition of words\nUsage: `/reqaddword wordone wordtwo ...`")
+        await message.reply("Function: Request addition of new words. Check @on9wcwa for new words.\n"
+                            "Usage: `/reqaddword wordone wordtwo ...`")
         return
     existing = []
     rejected = []
@@ -775,7 +778,7 @@ async def cmd_reqaddwords(message: types.Message) -> None:
             existing.append("_" + w.capitalize() + "_")
             words_to_add.remove(w)
     async with pool.acquire() as conn:
-        rej = await conn.fetch("SELECT word, reason FROM wordlist WHERE accepted = false;")
+        rej = await conn.fetch("SELECT word, reason FROM wordlist WHERE NOT accepted;")
     for word, reason in rej:
         if word not in words_to_add:
             continue
@@ -817,7 +820,7 @@ async def cmd_addwords(message: types.Message) -> None:
             existing.append("_" + w.capitalize() + "_")
             words_to_add.remove(w)
     async with pool.acquire() as conn:
-        rej = await conn.fetch("SELECT word, reason FROM wordlist WHERE accepted = false;")
+        rej = await conn.fetch("SELECT word, reason FROM wordlist WHERE NOT accepted;")
     for word, reason in rej:
         if word not in words_to_add:
             continue
@@ -832,7 +835,7 @@ async def cmd_addwords(message: types.Message) -> None:
         async with pool.acquire() as conn:
             await conn.executemany("INSERT INTO wordlist (word, accepted) VALUES ($1, true)",
                                    [(w,) for w in words_to_add])
-        text += f"Added {','.join(['_' + w.capitalize() + '_' for w in words_to_add])} to word list.\n"
+        text += f"Added {','.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.\n"
     if existing:
         text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
     if rejected:
@@ -844,6 +847,9 @@ async def cmd_addwords(message: types.Message) -> None:
         return
     await update_words()
     await msg.edit_text(msg.md_text + "\n\nWord list updated.")
+    await bot.send_message(WORD_ADDITION_CHANNEL_ID,
+                           f"Added {','.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.",
+                           disable_notification=True)
 
 
 @dp.message_handler(is_owner=True, commands="rejword")
@@ -854,16 +860,16 @@ async def cmd_rejword(message: types.Message) -> None:
         return
     word = word.lower()
     async with pool.acquire() as conn:
-        k = await conn.fetchrow("SELECT accepted, reason FROM wordlist WHERE word = $1;", word)
-        if k is None:
+        r = await conn.fetchrow("SELECT accepted, reason FROM wordlist WHERE word = $1;", word)
+        if r is None:
             await conn.execute("INSERT INTO wordlist (word, accepted, reason) VALUES ($1, false, $2)",
                                word, reason.strip() or None)
     word = word.capitalize()
-    if k is None:
+    if r is None:
         await message.reply(f"_{word}_ rejected.")
-    elif k["accepted"]:
+    elif r["accepted"]:
         await message.reply(f"_{word}_ was accepted.")
-    elif not k["reason"]:
+    elif not r["reason"]:
         await message.reply(f"_{word}_ was already rejected.")
     else:
         await message.reply(f"_{word}_ was already rejected due to {k['reason']}.")

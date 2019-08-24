@@ -27,6 +27,7 @@ with open("config.json") as f:
     OWNER_ID = config["OWNER_ID"]
     ADMIN_GROUP_ID = config["ADMIN_GROUP_ID"]
     OFFICIAL_GROUP_ID = config["OFFICIAL_GROUP_ID"]
+    WORD_ADDITION_CHANNEL_ID = config["WORD_ADDITION_CHANNEL_ID"]
     VIP = config["VIP"]
     VIP_GROUP = config["VIP_GROUP"]
 loop = asyncio.get_event_loop()
