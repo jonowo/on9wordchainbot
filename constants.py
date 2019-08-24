@@ -3,8 +3,8 @@ import json
 import logging
 from string import ascii_lowercase
 
+import aiohttp
 import asyncpg
-import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.dispatcher.filters import BoundFilter
 
@@ -36,26 +36,41 @@ bot = Bot(TOKEN, loop, parse_mode=types.ParseMode.MARKDOWN)
 on9bot = Bot(ON9BOT_TOKEN, loop)
 dp = Dispatcher(bot)
 GAMES = {}
-pool = None
-
-logger.info("Fetching list of words...")
-WORDS_LI = {i: [] for i in ascii_lowercase}
-w = requests.get("https://raw.githubusercontent.com/dwyl/english-words/master/words.txt").text.splitlines()
-for i in w:
-    i = i.lower()
-    if i.isalpha():
-        WORDS_LI[i[0]].append(i)
-WORDS = {i: set(WORDS_LI[i]) for i in ascii_lowercase}
-del w
+WORDS_LI = WORDS = pool = session = None
 
 
-async def db_init():
+def get_words():
+    return WORDS
+
+
+def get_words_li():
+    return WORDS_LI
+
+
+async def update_words():
+    global WORDS_LI, WORDS
+    async with session.get("https://raw.githubusercontent.com/dwyl/english-words/master/words.txt") as resp:
+        w = (await resp.text()).splitlines()
+    async with pool.acquire() as conn:
+        w += [i[0] for i in await conn.fetch("SELECT word from wordlist WHERE accepted = true;")]
+    w = set([i.lower() for i in w])
+    WORDS_LI = {i: [] for i in ascii_lowercase}
+    for i in w:
+        if i.isalpha():
+            WORDS_LI[i[0]].append(i)
+    WORDS = {i: set(WORDS_LI[i]) for i in ascii_lowercase}
+
+
+async def init():
+    global pool, session
+    session = aiohttp.ClientSession(loop=loop)
     logger.info("Connecting to database...")
-    global pool
     pool = await asyncpg.create_pool(DB_URI)
+    logger.info("Fetching word list...")
+    await update_words()
 
 
-loop.run_until_complete(db_init())
+loop.run_until_complete(init())
 
 
 class GameState:

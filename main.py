@@ -17,7 +17,7 @@ from aiogram.utils.markdown import quote_html
 from matplotlib.ticker import MaxNLocator
 
 from constants import (bot, dp, BOT_ID, ON9BOT_ID, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, GAMES, pool,
-                       PROVIDER_TOKEN, WORDS, WORDS_LI, GameState, GameSettings, amt_donated)
+                       PROVIDER_TOKEN, GameState, GameSettings, update_words, amt_donated, get_words, get_words_li)
 from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, RequiredLetterGame,
                   EliminationGame, MixedEliminationGame)
 
@@ -161,9 +161,11 @@ async def cmd_exists(message: types.Message) -> None:
         if rmsg and rmsg.text and all([c in ascii_lowercase for c in rmsg.text.lower()]):
             word = message.reply_to_message.text.lower()
         else:
-            await message.reply("Usage example: `/exists astrophotographer`")
+            await message.reply("Function: Check if I accept a word. "
+                                "Use /reqaddword if you want to request addition of words\n"
+                                "Usage: `/exists word`")
             return
-    if word in WORDS[word[0]]:
+    if word in get_words()[word[0]]:
         await message.reply(f"_{word.capitalize()}_ EXISTS in my list of words.")
         return
     await message.reply(f"_{word.capitalize()}_ DOES NOT EXIST in my list of words.")
@@ -452,7 +454,7 @@ async def cmd_leave(message: types.Message) -> None:
 async def cmd_stats(message: types.Message) -> None:
     rmsg = message.reply_to_message
     if (message.chat.id < 0 and not message.get_command().partition("@")[2]
-            or rmsg and (rmsg.from_user.is_bot and rmsg.from_user.id != ON9BOT_ID
+            or rmsg and (rmsg.from_user.is_bot and rmsg.from_user.id != ON9BOT_ID and not rmsg.forward_from
                          or rmsg.forward_from and rmsg.forward_from.is_bot and rmsg.forward_from.id != ON9BOT_ID)):
         return
     user = rmsg.forward_from or rmsg.from_user if rmsg else message.from_user
@@ -757,16 +759,126 @@ async def cmd_sql(message: types.Message) -> None:
     await message.reply("\n".join(text))
 
 
+@dp.message_handler(commands=["reqaddword", "reqaddwords"])
+async def cmd_reqaddwords(message: types.Message) -> None:
+    if message.forward_from:
+        return
+    words_to_add = [w for w in set(message.get_args().lower().split()) if all(c in ascii_lowercase for c in w)]
+    if not words_to_add:
+        await message.reply("Function: Request addition of words\nUsage: `/reqaddword wordone wordtwo ...`")
+        return
+    existing = []
+    rejected = []
+    rejected_with_reason = []
+    for w in words_to_add[:]:
+        if w in get_words()[w[0]]:
+            existing.append("_" + w.capitalize() + "_")
+            words_to_add.remove(w)
+    async with pool.acquire() as conn:
+        rej = await conn.fetch("SELECT word, reason FROM wordlist WHERE accepted = false;")
+    for word, reason in rej:
+        if word not in words_to_add:
+            continue
+        words_to_add.remove(word)
+        word = "_" + word.capitalize() + "_"
+        if reason:
+            rejected_with_reason.append((word, reason))
+        else:
+            rejected.append(word)
+    text = ""
+    if words_to_add:
+        text += f"Submitted {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} for approval.\n"
+        await bot.send_message(ADMIN_GROUP_ID, message.from_user.get_mention(
+            name=message.from_user.full_name + (
+                " \u2b50\ufe0f" if message.from_user.id in VIP or bool(await amt_donated(message.from_user.id))
+                else ""), as_html=True)
+                               + " is requesting the addition of "
+                               + ", ".join(["<i>" + w.capitalize() + "</i>" for w in words_to_add])
+                               + " in the word list.", parse_mode=types.ParseMode.HTML)
+    if existing:
+        text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
+    if rejected:
+        text += f"{', '.join(rejected)} {'was' if len(rejected) == 1 else 'were'} rejected.\n"
+    for word, reason in rejected_with_reason:
+        text += f"{word} was rejected due to {reason}.\n"
+    await message.reply(text.rstrip())
+
+
+@dp.message_handler(is_owner=True, commands=["addword", "addwords"])
+async def cmd_addwords(message: types.Message) -> None:
+    words_to_add = [w for w in set(message.get_args().lower().split()) if all(c in ascii_lowercase for c in w)]
+    if not words_to_add:
+        return
+    existing = []
+    rejected = []
+    rejected_with_reason = []
+    for w in words_to_add[:]:
+        if w in get_words()[w[0]]:
+            existing.append("_" + w.capitalize() + "_")
+            words_to_add.remove(w)
+    async with pool.acquire() as conn:
+        rej = await conn.fetch("SELECT word, reason FROM wordlist WHERE accepted = false;")
+    for word, reason in rej:
+        if word not in words_to_add:
+            continue
+        words_to_add.remove(word)
+        word = "_" + word.capitalize() + "_"
+        if reason:
+            rejected_with_reason.append((word, reason))
+        else:
+            rejected.append(word)
+    text = ""
+    if words_to_add:
+        async with pool.acquire() as conn:
+            await conn.executemany("INSERT INTO wordlist (word, accepted) VALUES ($1, true)",
+                                   [(w,) for w in words_to_add])
+        text += f"Added {','.join(['_' + w.capitalize() + '_' for w in words_to_add])} to word list.\n"
+    if existing:
+        text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
+    if rejected:
+        text += f"{', '.join(rejected)} {'was' if len(rejected) == 1 else 'were'} rejected.\n"
+    for word, reason in rejected_with_reason:
+        text += f"{word} was rejected due to {reason}.\n"
+    msg = await message.reply(text.rstrip())
+    if not words_to_add:
+        return
+    await update_words()
+    await msg.edit_text(msg.md_text + "\n\nWord list updated.")
+
+
+@dp.message_handler(is_owner=True, commands="rejword")
+async def cmd_rejword(message: types.Message) -> None:
+    arg = message.get_args()
+    word, _, reason = arg.partition(" ")
+    if not word:
+        return
+    word = word.lower()
+    async with pool.acquire() as conn:
+        k = await conn.fetchrow("SELECT accepted, reason FROM wordlist WHERE word = $1;", word)
+        if k is None:
+            await conn.execute("INSERT INTO wordlist (word, accepted, reason) VALUES ($1, false, $2)",
+                               word, reason.strip() or None)
+    word = word.capitalize()
+    if k is None:
+        await message.reply(f"_{word}_ rejected.")
+    elif k["accepted"]:
+        await message.reply(f"_{word}_ was accepted.")
+    elif not k["reason"]:
+        await message.reply(f"_{word}_ was already rejected.")
+    else:
+        await message.reply(f"_{word}_ was already rejected due to {k['reason']}.")
+
+
 @dp.message_handler(commands="feedback")
 async def cmd_feedback(message: types.Message) -> None:
     rmsg = message.reply_to_message
     if (message.chat.id < 0 and not message.get_command().partition("@")[2]
-            and (not rmsg or rmsg.from_user.id != BOT_ID)):
+            and (not rmsg or rmsg.from_user.id != BOT_ID) or message.forward_from):
         return
     arg = message.get_full_command()[1]
     if not arg:
-        await message.reply("Send feedback to my owner using this function.\n"
-                            "Usage example: `/feedback@on9wordchainbot JS is very on9`")
+        await message.reply("Function: Send feedback to my owner.\n"
+                            "Usage: `/feedback@on9wordchainbot feedback`")
         return
     await message.forward(ADMIN_GROUP_ID)
     await message.reply("Feedback sent successfully.")
@@ -825,7 +937,7 @@ async def inline_handler(inline_query: types.InlineQuery):
         )], is_personal=True)
         return
     res = []
-    for i in WORDS_LI[text[0]]:
+    for i in get_words_li()[text[0]]:
         if i.startswith(text):
             i = i.capitalize()
             res.append(types.InlineQueryResultArticle(id=str(uuid4()), title=i,
@@ -890,5 +1002,6 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+# TODO: /gameinfo
 # TODO: /nextgame
 # TODO: achv

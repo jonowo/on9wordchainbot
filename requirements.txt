@@ -1,6 +1,8 @@
 git+git://github.com/Tinche/aiofiles@master#egg=aiofiles
+aiodns
+aiohttp
 aiogram
 asyncpg
-requests
+cchardet
 matplotlib
 pillow
