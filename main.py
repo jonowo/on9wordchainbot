@@ -164,7 +164,7 @@ async def cmd_exists(message: types.Message) -> None:
             word = message.reply_to_message.text.lower()
         else:
             await message.reply("Function: Check if I accept a word. "
-                                "Use /reqaddword if you want to request addition of new words\n"
+                                "Use /reqaddword if you want to request addition of new words.\n"
                                 "Usage: `/exists word`")
             return
     if word in get_words()[word[0]]:
@@ -797,7 +797,7 @@ async def cmd_reqaddwords(message: types.Message) -> None:
                 else ""), as_html=True)
                                + " is requesting the addition of "
                                + ", ".join(["<i>" + w.capitalize() + "</i>" for w in words_to_add])
-                               + " in the word list.", parse_mode=types.ParseMode.HTML)
+                               + " to the word list.", parse_mode=types.ParseMode.HTML)
     if existing:
         text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
     if rejected:
@@ -835,7 +835,7 @@ async def cmd_addwords(message: types.Message) -> None:
         async with pool.acquire() as conn:
             await conn.executemany("INSERT INTO wordlist (word, accepted) VALUES ($1, true)",
                                    [(w,) for w in words_to_add])
-        text += f"Added {','.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.\n"
+        text += f"Added {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.\n"
     if existing:
         text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
     if rejected:
@@ -848,7 +848,7 @@ async def cmd_addwords(message: types.Message) -> None:
     await update_words()
     await msg.edit_text(msg.md_text + "\n\nWord list updated.")
     await bot.send_message(WORD_ADDITION_CHANNEL_ID,
-                           f"Added {','.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.",
+                           f"Added {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.",
                            disable_notification=True)
 
 
