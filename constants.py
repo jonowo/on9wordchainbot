@@ -54,7 +54,7 @@ async def update_words():
         w = (await resp.text()).splitlines()
     async with pool.acquire() as conn:
         w += [i[0] for i in await conn.fetch("SELECT word from wordlist WHERE accepted = true;")]
-    w = set([i.lower() for i in w])
+    w = sorted(set([i.lower() for i in w]))
     WORDS_LI = {i: [] for i in ascii_lowercase}
     for i in w:
         if i.isalpha():

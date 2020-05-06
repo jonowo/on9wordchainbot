@@ -15,10 +15,11 @@ from aiogram.types.message import ContentTypes
 from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
 from aiogram.utils.markdown import quote_html
 from matplotlib.ticker import MaxNLocator
+from matplotlib.dates import DateFormatter, MonthLocator
 
 from constants import (bot, dp, BOT_ID, ON9BOT_ID, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID,
-                       WORD_ADDITION_CHANNEL_ID, GAMES, pool, PROVIDER_TOKEN, GameState, GameSettings, update_words,
-                       amt_donated, get_words, get_words_li)
+                       WORD_ADDITION_CHANNEL_ID, GAMES, pool, PROVIDER_TOKEN, GameState, GameSettings,
+                       update_words, amt_donated, get_words, get_words_li)
 from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, RequiredLetterGame,
                   EliminationGame, MixedEliminationGame)
 
@@ -46,14 +47,14 @@ async def cmd_start(message: types.Message) -> None:
         await send_donate_msg(message)
         return
     await message.reply(
-        "Terms of Service\n\n"
-        "0. You *MUST* report bugs you encounter to this bot's owner - "
+        "(Questionably the) Terms of Service\n\n"
+        "0. Please report bugs you encounter to this bot's owner - "
         "[Trainer Jono](https://t.me/Trainer_Jono).\n\n"
-        "1. You understand that complaints about missing words are usually ignored since this bot's owner is not "
-        "responsible for such issues.\n\n"
-        "2. You will forgive this bot's owner in case a game suddenly ends, usually due to him forgetting to check if "
-        "there were running games before manually terminating this bot's program.\n\n"
-        "By starting this bot, you have agreed to the above terms of service.\n"
+        "1. You understand that complaints about missing words are usually ignored since this bot's owner is "
+        "not responsible for such issues.\n\n"
+        "2. You will forgive this bot's owner in case a game suddenly ends, usually due to him forgetting to "
+        "check if there were running games before manually terminating this bot's program.\n\n"
+        "By starting this bot, you have already agreed to the above terms of service.\n"
         "Add me to a group to start playing games!",
         disable_web_page_preview=True,
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
@@ -83,6 +84,18 @@ async def cmd_help(message: types.Message) -> None:
         ))
         return
     await message.reply(
+        "/gameinfo - Game mode descriptions\n"
+        "/links - Related links\n"
+        "/ping - Check bot response time\n"
+        "/reqaddword - Request addition of words\n\n"
+        "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English or Cantonese.",
+        disable_web_page_preview=True
+    )
+
+
+@dp.message_handler(commands="gameinfo")
+async def cmd_gameinfo(message: types.Message) -> None:
+    await message.reply(
         "I provide several variations of the English game _Word Chain_.\n\n"
         "/startclassic - Classic game\n"
         "Players come up with words that begin with the last letter of the previous word. Players unable to come up "
@@ -103,19 +116,17 @@ async def cmd_help(message: types.Message) -> None:
         "player(s) with the lowest score get eliminated from the game.\n\n"
         "/startmelim - Mixed elimination game (Donation reward)\n"
         "Elimination game with four modes: classic, chosen first letter, banned letters and require letter. Modes "
-        "switch every round.",
-        disable_web_page_preview=True
+        "switch every round."
     )
 
 
-@dp.message_handler(commands="info")
-async def cmd_info(message: types.Message) -> None:
+@dp.message_handler(commands="links")
+async def cmd_links(message: types.Message) -> None:
     await message.reply(
         "[Official Channel](https://t.me/On9Updates)\n"
         "[Official Group](https://t.me/on9wordchain)\n"
         "[Word Additions Channel](https://t.me/on9wcwa)\n"
-        "[GitHub Repo: Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
-        "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English or Cantonese.\n",
+        "[GitHub Repo: Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)",
         disable_web_page_preview=True
     )
 
@@ -178,9 +189,6 @@ async def cmd_startclassic(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
-        return
     if MAINT_MODE:
         await message.reply("Maintenance mode is on. Games are temporarily disabled.")
         return
@@ -197,9 +205,6 @@ async def cmd_startclassic(message: types.Message) -> None:
 async def cmd_starthard(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
-        return
-    rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
         return
     if MAINT_MODE:
         await message.reply("Maintenance mode is on. Games are temporarily disabled.")
@@ -218,9 +223,6 @@ async def cmd_startchaos(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
-        return
     if MAINT_MODE:
         await message.reply("Maintenance mode is on. Games are temporarily disabled.")
         return
@@ -237,9 +239,6 @@ async def cmd_startchaos(message: types.Message) -> None:
 async def cmd_startcfl(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
-        return
-    rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
         return
     if MAINT_MODE:
         await message.reply("Maintenance mode is on. Games are temporarily disabled.")
@@ -258,9 +257,6 @@ async def cmd_startbl(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
-        return
     if MAINT_MODE:
         await message.reply("Maintenance mode is on. Games are temporarily disabled.")
         return
@@ -277,9 +273,6 @@ async def cmd_startbl(message: types.Message) -> None:
 async def cmd_startrl(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
-        return
-    rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
         return
     if MAINT_MODE:
         await message.reply("Maintenance mode is on. Games are temporarily disabled.")
@@ -298,9 +291,6 @@ async def cmd_startelim(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
-        return
     if MAINT_MODE:
         await message.reply("Maintenance mode is on. Games are temporarily disabled.")
         return
@@ -317,9 +307,6 @@ async def cmd_startelim(message: types.Message) -> None:
 async def cmd_startmixedelim(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
-        return
-    rmsg = message.reply_to_message
-    if not message.get_command().partition("@")[2] and (not rmsg or rmsg.from_user.id != BOT_ID):
         return
     if (message.chat.id not in VIP_GROUP and message.from_user.id not in VIP
             and (await amt_donated(message.from_user.id)) < 30):
@@ -523,7 +510,7 @@ async def cmd_trends(message: types.Message) -> None:
         return
     d = datetime.now().date()
     tp = [d - timedelta(days=i) for i in range(days - 1, -1, -1)]
-    tp_str = [f"{i.day}/{i.month}" for i in tp]
+    f = DateFormatter("%b %d" if days < 180 else "%b" if days < 335 else "%b %Y")
     async with pool.acquire() as conn:
         daily_games = dict(await conn.fetch("""\
 SELECT start_time::DATE d, COUNT(start_time::DATE)
@@ -607,21 +594,28 @@ SELECT COUNT(game_mode), game_mode
     while os.path.exists("trends.jpg"):
         await asyncio.sleep(0.1)
     plt.figure(figsize=(15, 8))
+    plt.subplots_adjust(hspace=0.4)
     plt.suptitle(f"Trends in the Past {days} Days", size=25)
     sp = plt.subplot(231)
+    sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))  # Force y-axis intervals to be integral
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
     plt.title("Games Played", size=18)
-    plt.plot(tp_str, [daily_games.get(i, 0) for i in tp])
+    plt.plot(tp, [daily_games.get(i, 0) for i in tp])
     plt.ylim(ymin=0)
     sp = plt.subplot(232)
+    sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
     plt.title("Active Groups", size=18)
-    plt.plot(tp_str, [active_groups.get(i, 0) for i in tp])
+    plt.plot(tp, [active_groups.get(i, 0) for i in tp])
     plt.ylim(ymin=0)
     sp = plt.subplot(233)
+    sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
     plt.title("Active Players", size=18)
-    plt.plot(tp_str, [active_players.get(i, 0) for i in tp])
+    plt.plot(tp, [active_players.get(i, 0) for i in tp])
     plt.ylim(ymin=0)
     plt.subplot(234)
     labels = [i[1] for i in game_mode_play_cnt]
@@ -634,13 +628,17 @@ SELECT COUNT(game_mode), game_mode
     plt.legend(slices, labels, title="Game Modes Played", fontsize="x-small", loc="best")
     plt.axis("equal")
     sp = plt.subplot(235)
+    sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
     plt.title("Cumulative Groups", size=18)
-    plt.plot(tp_str, [cumulative_groups[i] for i in tp])
+    plt.plot(tp, [cumulative_groups[i] for i in tp])
     sp = plt.subplot(236)
+    sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
     plt.title("Cumulative Players", size=18)
-    plt.plot(tp_str, [cumulative_players[i] for i in tp])
+    plt.plot(tp, [cumulative_players[i] for i in tp])
     plt.savefig("trends.jpg", bbox_inches="tight")
     plt.close("all")
     async with aiofiles.open("trends.jpg", "rb") as f:
@@ -735,12 +733,12 @@ VALUES
                            payment.telegram_payment_charge_id, payment.provider_payment_charge_id)
     await message.reply(f"Your donation of {amt} HKD is successful.\n"
                         "Thank you for your support! \u2764\ufe0f\n"
-                        f"Donation id: #on9wcbot\_{donation_id}",
+                        f"Donation id: #on9wcbot\\_{donation_id}",
                         reply=False)
     await bot.send_message(ADMIN_GROUP_ID,
                            f"Received donation of {amt} HKD from {message.from_user.get_mention(as_html=True)} "
                            f"(id: <code>{message.from_user.id}</code>).\n"
-                           f"Donation id: #on9wcbot\_{donation_id}",
+                           f"Donation id: #on9wcbot\\_{donation_id}",
                            parse_mode=types.ParseMode.HTML)
 
 
@@ -872,7 +870,7 @@ async def cmd_rejword(message: types.Message) -> None:
     elif not r["reason"]:
         await message.reply(f"_{word}_ was already rejected.")
     else:
-        await message.reply(f"_{word}_ was already rejected due to {k['reason']}.")
+        await message.reply(f"_{word}_ was already rejected due to {r['reason']}.")
 
 
 @dp.message_handler(commands="feedback")
@@ -890,8 +888,8 @@ async def cmd_feedback(message: types.Message) -> None:
     await message.reply("Feedback sent successfully.")
 
 
-@dp.message_handler(is_group=True, regexp="^\w+$")
-@dp.edited_message_handler(is_group=True, regexp="^\w+$")
+@dp.message_handler(is_group=True, regexp=r"^\w+$")
+@dp.edited_message_handler(is_group=True, regexp=r"^\w+$")
 async def message_handler(message: types.Message) -> None:
     group_id = message.chat.id
     if (group_id in GAMES and GAMES[group_id].players_in_game
@@ -1008,6 +1006,5 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# TODO: /gameinfo
-# TODO: /nextgame
-# TODO: achv
+# TODO: /nextgame (probably later)
+# TODO: achv (probably much later)
