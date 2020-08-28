@@ -3,4 +3,4 @@
 
 Visit [On9 Word Chain Bot](https://t.me/on9wordchainbot) on Telegram.
 
-Join the [official channel](https://t.me/On9Updates) and the [official group](https://t.me/on9wordchain).
+Join the [official group](https://t.me/on9wordchain).

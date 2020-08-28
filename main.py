@@ -14,8 +14,8 @@ from aiogram import executor, types
 from aiogram.types.message import ContentTypes
 from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
 from aiogram.utils.markdown import quote_html
+from matplotlib.dates import DateFormatter
 from matplotlib.ticker import MaxNLocator
-from matplotlib.dates import DateFormatter, MonthLocator
 
 from constants import (bot, dp, BOT_ID, ON9BOT_ID, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID,
                        WORD_ADDITION_CHANNEL_ID, GAMES, pool, PROVIDER_TOKEN, GameState, GameSettings,
@@ -47,14 +47,7 @@ async def cmd_start(message: types.Message) -> None:
         await send_donate_msg(message)
         return
     await message.reply(
-        "(Questionably the) Terms of Service\n\n"
-        "0. Please report bugs you encounter to this bot's owner - "
-        "[Trainer Jono](https://t.me/Trainer_Jono).\n\n"
-        "1. You understand that complaints about missing words are usually ignored since this bot's owner is "
-        "not responsible for such issues.\n\n"
-        "2. You will forgive this bot's owner in case a game suddenly ends, usually due to him forgetting to "
-        "check if there were running games before manually terminating this bot's program.\n\n"
-        "By starting this bot, you have already agreed to the above terms of service.\n"
+        "Hi! I host games of word chain in groups.\n"
         "Add me to a group to start playing games!",
         disable_web_page_preview=True,
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
@@ -85,48 +78,78 @@ async def cmd_help(message: types.Message) -> None:
         return
     await message.reply(
         "/gameinfo - Game mode descriptions\n"
-        "/links - Related links\n"
-        "/ping - Check bot response time\n"
+        "/troubleshoot - See how to solve common issues\n"
         "/reqaddword - Request addition of words\n\n"
-        "Feel free to PM my owner [Trainer Jono](https://t.me/Trainer_Jono) in English or Cantonese.",
+        "You may message my owner [Jono](https://t.me/Trainer_Jono) in *English or Cantonese*.\n"
+        "Official Group: @on9wordchain\n"
+        "Word Additions Channel (with status updates): @on9wcwa\n"
+        "Source Code: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)",
         disable_web_page_preview=True
     )
 
 
 @dp.message_handler(commands="gameinfo")
 async def cmd_gameinfo(message: types.Message) -> None:
+    if message.chat.id < 0:
+        await message.reply("Please use this command in private.")
+        return
     await message.reply(
-        "I provide several variations of the English game _Word Chain_.\n\n"
+        "I host several variations of the word chain game.\n\n"
         "/startclassic - Classic game\n"
-        "Players come up with words that begin with the last letter of the previous word. Players unable to come up "
-        "with a word in time are eliminated from the game. The time limit decreases and the minimum word length limit "
-        "increases throughout the game to level up the difficulty.\n\n"
+        "Players take turns to answer words starting with the last letter of the previous word within the "
+        "time limit. If they fail to do so, they are eliminated. "
+        "The time limit decreases and the minimum word length limit increases throughout the game.\n\n"
         "/starthard - Hard mode game\n"
-        "Classic gameplay starting with the most difficult settings.\n\n"
+        "Starts with the most difficult settings.\n\n"
         "/startchaos - Chaos game\n"
-        "Classic gameplay but without turn order, players are selected to answer by random.\n\n"
+        "Random turn order.\n\n"
         "/startcfl - Chosen first letter game\n"
-        "Players come up with words starting with the chosen letter.\n\n"
+        "Words must start with the chosen letter.\n\n"
         "/startbl - Banned letters game\n"
-        "Classic gameplay but 2-4 letters (incl. max one vowel) are banned and cannot be present in answers.\n\n"
+        "2-4 letters (max one vowel) cannot be present in answers.\n\n"
         "/startrl - Required letter game\n"
-        "Classic gameplay but a specific letter must be present in answers.\n\n"
+        "A specific letter must be present in answers.\n\n"
         "/startelim - Elimination game\n"
-        "Each player has a score, which is their cumulative word length. After each player has played a round, the "
-        "player(s) with the lowest score get eliminated from the game.\n\n"
-        "/startmelim - Mixed elimination game (Donation reward)\n"
-        "Elimination game with four modes: classic, chosen first letter, banned letters and require letter. Modes "
-        "switch every round."
+        "Each player's score is their cumulative word length. After each round, the player(s) with the lowest "
+        "score are eliminated.\n\n"
+        "/startmelim - Mixed elimination game (donation reward)\n"
+        "Elimination game with four modes: classic, chosen first letter, banned letters and required letter. "
+        "Modes switch every round. You can try out this game mode at @on9wordchain."
     )
 
 
-@dp.message_handler(commands="links")
-async def cmd_links(message: types.Message) -> None:
+@dp.message_handler(commands="troubleshoot")
+async def cmd_troubleshoot(message: types.Message) -> None:
+    if message.chat.id < 0:
+        await message.reply("Please use this command in private.")
+        return
     await message.reply(
-        "[Official Channel](https://t.me/On9Updates)\n"
-        "[Official Group](https://t.me/on9wordchain)\n"
-        "[Word Additions Channel](https://t.me/on9wcwa)\n"
-        "[GitHub Repo: Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)",
+        "If you cannot start games in your group:\n"
+        "1. Check if you typed the correct command, e.g. /startclassic@on9wordchainbot\n"
+        "2. If I say \"Maintenance mode is on. Games are temporarily disabled.\", that means my owner is "
+        "about to deploy an update and you cannot start games for the meantime. "
+        "Check @on9wcwa for status updates.\n"
+        "3. Send /ping@on9wordchainbot in your group.\n\n"
+        "If I do not respond:\n"
+        "a. Check if I am restricted (muted) or if slow mode is enabled in your group. "
+        "I cannot operate normally if I am restricted from sending messages.\n"
+        "b. Check if I am present in your group. If I am not, well, you can't start games lol.\n"
+        "c. I could be offline since my owner is deploying an update. Check @on9wcwa for status updates. "
+        "Please wait patiently until I am online later.\n"
+        "d. If someone in your group spammed me with commands, I am restricted from sending "
+        "messages to your group for minutes or even hours by Telegram. "
+        "Do not spam commands if I do not respond and try later instead.\n\n"
+        "If I do respond:\n"
+        "Send /groupid@on9wordchainbot in your group and forward the result to "
+        "[my owner](https://t.me/Trainer_Jono) and tell him you are unable to start games.\n\n"
+        "If you cannot add me into your group:\n"
+        "1. Check if you have the permission to add new members in your group. "
+        "Groups can be configured to disallow you from doing so.\n"
+        "2. Check if there are already 20 bots in your group. If so, a bot has to be removed in your group in "
+        "order to add me. Telegram limits the maximum number of bots in a group to 20.\n"
+        "3. I cannot help you if you still fail to add me. Please contact your group admin.\n\n"
+        "If you encounter other issues, please message [my owner](https://t.me/Trainer_Jono) stating the "
+        "issue elaborately.",
         disable_web_page_preview=True
     )
 
@@ -136,6 +159,14 @@ async def cmd_ping(message: types.Message) -> None:
     t = time()
     msg = await message.reply("Pong!")
     await msg.edit_text(f"Pong! `{time() - t:.3f}s`")
+
+
+@dp.message_handler(commands="groupid")
+async def cmd_groupid(message: types.Message) -> None:
+    if message.chat.id < 0:
+        await message.reply(f"`{message.chat.id}`")
+    else:
+        await message.reply("Run this command inside a group.")
 
 
 @dp.message_handler(commands="runinfo")
@@ -310,7 +341,10 @@ async def cmd_startmixedelim(message: types.Message) -> None:
         return
     if (message.chat.id not in VIP_GROUP and message.from_user.id not in VIP
             and (await amt_donated(message.from_user.id)) < 30):
-        await message.reply("Ability to start this mode is rewarded for donating.")
+        await message.reply(
+            "This game mode is a donation reward.\n"
+            "You may try out this game mode at @on9wordchain without donating."
+        )
         return
     if MAINT_MODE:
         await message.reply("Maintenance mode is on. Games are temporarily disabled.")
@@ -665,7 +699,8 @@ async def cmd_donate(message: types.Message) -> None:
             await message.reply("Invalid amount.\nPlease enter a positive number.")
         except BadRequest as e:
             if str(e) == "Currency_total_amount_invalid":
-                await message.reply("Sorry, the entered amount was not within 1-10000 USD. Please try another amount.")
+                await message.reply("Sorry, the entered amount was not in range (1-10000). "
+                                    "Please try another amount.")
                 return
             raise
 
@@ -673,7 +708,7 @@ async def cmd_donate(message: types.Message) -> None:
 async def send_donate_msg(message: types.Message) -> None:
     await message.reply(
         "Donate to support this project! \u2764\ufe0f\n"
-        "Donations are accepted in HKD (1 USD ≈ 7.84 HKD).\n"
+        "Donations are accepted in HKD (1 USD ≈ 7.75 HKD).\n"
         "Select one of the following options or type in the desired amount in HKD (e.g. `/donate 42.42`).\n\n"
         "Donation rewards:\n"
         "Any amount: \u2b50\ufe0f is displayed next to your name during games.\n"
@@ -964,7 +999,7 @@ async def callback_query_handler(callback_query: types.CallbackQuery) -> None:
     await callback_query.answer()
 
 
-@dp.errors_handler(exception=TelegramAPIError)
+@dp.errors_handler(exception=Exception)
 async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
     if isinstance(error, BadRequest) and str(error) == "Reply message not found":
         return

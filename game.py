@@ -367,33 +367,43 @@ VALUES
                                 f"{self.min_players}-{self.max_players} players are needed.\n"
                                 f"{self.time_left}s to /join.")
         await self.join(message)
-        while True:
-            await asyncio.sleep(1)
-            if self.state == GameState.JOINING:
-                if self.time_left > 0:
-                    self.time_left -= 1
-                    if self.time_left in (15, 30, 60):
-                        await self.send_message(f"{self.time_left}s left to /join.")
-                else:
-                    if len(self.players) < self.min_players:
-                        await self.send_message("Not enough players. Game terminated.")
-                        del GAMES[self.group_id]
-                        return
+        try:
+            while True:
+                await asyncio.sleep(1)
+                if self.state == GameState.JOINING:
+                    if self.time_left > 0:
+                        self.time_left -= 1
+                        if self.time_left in (15, 30, 60):
+                            await self.send_message(f"{self.time_left}s left to /join.")
                     else:
-                        self.state = GameState.RUNNING
-                        await self.send_message("Game is starting...")
-                        random.shuffle(self.players)
-                        self.players_in_game = self.players[:]
-                        await self.running_initialization()
-                        await self.send_turn_message()
-            elif self.state == GameState.RUNNING:
-                if await self.running_phase():
-                    await self.update_db()
+                        if len(self.players) < self.min_players:
+                            await self.send_message("Not enough players. Game terminated.")
+                            del GAMES[self.group_id]
+                            return
+                        else:
+                            self.state = GameState.RUNNING
+                            await self.send_message("Game is starting...")
+                            random.shuffle(self.players)
+                            self.players_in_game = self.players[:]
+                            await self.running_initialization()
+                            await self.send_turn_message()
+                elif self.state == GameState.RUNNING:
+                    if await self.running_phase():
+                        await self.update_db()
+                        return
+                elif self.state == GameState.KILLGAME:
+                    await self.send_message("Game ended forcibly.")
+                    del GAMES[self.group_id]
                     return
-            elif self.state == GameState.KILLGAME:
-                await self.send_message("Game ended forcibly.")
-                del GAMES[self.group_id]
-                return
+        except Exception as e:
+            del GAMES[self.group_id]
+            try:
+                await self.send_message(
+                    f"Game ended due to {e.__class__.__name__}: {e}.\nMy owner will be notified."
+                )
+            except:
+                pass
+            raise
 
 
 class HardModeGame(ClassicGame):
@@ -661,7 +671,7 @@ class BannedLettersGame(ClassicGame):
             await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.")
             return
         if any(c for c in self.banned_letters if c in word):
-            await message.reply(f"_{word.capitalize()}_ include banned letters "
+            await message.reply(f"_{word.capitalize()}_ includes banned letters "
                                 f"({', '.join(c.upper() for c in self.banned_letters if c in word)}).")
             return
         if len(word) < self.min_letters_limit:
@@ -1015,7 +1025,7 @@ class MixedEliminationGame(EliminationGame):
             return
         if self.game_mode is BannedLettersGame:
             if any(c for c in self.banned_letters if c in word):
-                await message.reply(f"_{word.capitalize()}_ include banned letters "
+                await message.reply(f"_{word.capitalize()}_ includes banned letters "
                                     f"({', '.join(c.upper() for c in self.banned_letters if c in word)}).")
                 return
         elif self.game_mode is RequiredLetterGame:
@@ -1119,6 +1129,7 @@ class MixedEliminationGame(EliminationGame):
                 self.current_word = self.current_word[-1]
                 text += f"\nThe chosen first letter is <i>{self.current_word[0].upper()}</i>."
             elif self.game_mode is BannedLettersGame:
+                self.banned_letters.clear()
                 alphabets = list(ascii_lowercase)
                 alphabets.remove(self.current_word[-1])
                 for i in range(random.randint(2, 4)):
