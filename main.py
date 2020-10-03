@@ -188,12 +188,15 @@ async def cmd_playinggroups(message: types.Message) -> None:
         return
     groups = []
     for group_id in GAMES:
-        group = await bot.get_chat(group_id)
-        url = await group.get_url()
-        if url:
-            groups.append(f"[{group.title}]({url})")
-        else:
-            groups.append(f"{group.title} {group.id}")
+        try:
+            group = await bot.get_chat(group_id)
+            url = await group.get_url()
+            if url:
+                groups.append(f"[{group.title}]({url}) {group.id} Timer: {GAMES[group_id].time_left}")
+            else:
+                groups.append(f"{group.title} {group.id} Timer: {GAMES[group_id].time_left}")
+        except Exception as e:
+            groups.append(f"({e.__class__.__name__}: {e!s}) {group_id} Timer: {GAMES[group_id].time_left}")
     await message.reply("\n".join(groups), disable_web_page_preview=True)
 
 
@@ -1001,8 +1004,8 @@ async def callback_query_handler(callback_query: types.CallbackQuery) -> None:
 
 @dp.errors_handler(exception=Exception)
 async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
-    if isinstance(error, BadRequest) and str(error) == "Reply message not found":
-        return
+    for game in GAMES.values():
+        asyncio.create_task(game.scan_for_stale_timer())
     if isinstance(error, MigrateToChat):
         if update.message.chat.id in GAMES:
             GAMES[error.migrate_to_chat_id] = GAMES.pop(update.message.chat.id)
@@ -1030,7 +1033,7 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
         try:
             del GAMES[update.message.chat.id]
             await update.message.reply("Game ended forcibly.")
-        except (KeyError, TelegramAPIError):
+        except:
             pass
 
 
@@ -1040,6 +1043,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-# TODO: /nextgame (probably later)
-# TODO: achv (probably much later)

@@ -71,6 +71,12 @@ class ClassicGame:
     async def join(self, message: types.Message) -> None:
         if self.state != GameState.JOINING or len(self.players) >= self.max_players:
             return
+
+        # Try to detect game not starting
+        if self.time_left < 0:
+            await self.scan_for_stale_timer()
+            return
+
         user = message.from_user
         for p in self.players:
             if p.user_id == user.id:
@@ -79,8 +85,7 @@ class ClassicGame:
         self.players.append(player)
         await message.reply(f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML,
-                            disable_web_page_preview=True)
+                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
 
@@ -98,8 +103,7 @@ class ClassicGame:
             self.players_in_game.append(player)
         await message.reply(f"{player.name} has been joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML,
-                            disable_web_page_preview=True)
+                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
 
@@ -115,8 +119,7 @@ class ClassicGame:
             return
         await message.reply(f"{player.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML,
-                            disable_web_page_preview=True)
+                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
 
     async def forceflee(self, message: types.Message) -> None:
         if self.state != GameState.JOINING or not message.reply_to_message:
@@ -131,7 +134,7 @@ class ClassicGame:
         await message.reply(
             f"{player.name} has been fled. There {'is' if len(self.players) == 1 else 'are'} {len(self.players)} "
             f"player{'' if len(self.players) == 1 else 's'}.",
-            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True
+            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False
         )
 
     async def extend(self, message: types.Message) -> None:
@@ -145,13 +148,13 @@ class ClassicGame:
             else:
                 self.time_left = self.time_left - n
                 await message.reply(f"The joining phase has been reduced by {n}s.\n"
-                                    f"You have {self.time_left}s to /join.")
+                                    f"You have {self.time_left}s to /join.", reply=False)
         else:
             n = int(arg) if arg.isdecimal() and int(arg) else 30
             self.time_left = min(self.time_left + n, GameSettings.MAX_JOINING_PHASE_SECONDS)
             await message.reply(f"The joining phase has been extended by "
                                 f"{min(n, GameSettings.MAX_JOINING_PHASE_SECONDS)}s.\n"
-                                f"You have {self.time_left}s to /join.")
+                                f"You have {self.time_left}s to /join.", reply=False)
 
     async def addvp(self, message: types.Message) -> None:
         try:
@@ -175,7 +178,7 @@ class ClassicGame:
         await on9bot.send_message(self.group_id, "/join")
         await message.reply(f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True)
+                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
         if len(self.players) >= self.max_players:
             self.time_left = -99999
 
@@ -191,7 +194,7 @@ class ClassicGame:
         await on9bot.send_message(self.group_id, "/flee")
         await message.reply(f"{vp.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
                             f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True)
+                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
 
     async def send_turn_message(self) -> None:
         await self.send_message(
@@ -362,12 +365,26 @@ VALUES
                                    p.user_id, self.group_id, game_id, p in self.players_in_game,
                                    p.word_count, p.letter_count, p.longest_word or None)
 
-    async def main_loop(self, message: types.Message) -> None:
-        await self.send_message(f"A{'n' if self.name[0] in 'aeiou' else ''} {self.name} is starting.\n"
-                                f"{self.min_players}-{self.max_players} players are needed.\n"
-                                f"{self.time_left}s to /join.")
-        await self.join(message)
+    async def scan_for_stale_timer(self):
+        # Prevent games being stuck in groups.
+        timer = self.time_left
+        for _ in range(5):
+            await asyncio.sleep(1)
+            if timer != self.time_left and timer >= 0:
+                return
         try:
+            await self.send_message("Prolonged stale/negative timer. Game terminated.")
+        except:
+            pass
+        GAMES.pop(self.group_id)
+
+    async def main_loop(self, message: types.Message) -> None:
+        negative_timer = 0  # Hopefully fix issue of game not ending with negative timer.
+        try:
+            await self.send_message(f"A{'n' if self.name[0] in 'aeiou' else ''} {self.name} is starting.\n"
+                                    f"{self.min_players}-{self.max_players} players are needed.\n"
+                                    f"{self.time_left}s to /join.")
+            await self.join(message)
             while True:
                 await asyncio.sleep(1)
                 if self.state == GameState.JOINING:
@@ -388,6 +405,10 @@ VALUES
                             await self.running_initialization()
                             await self.send_turn_message()
                 elif self.state == GameState.RUNNING:
+                    if self.time_left < 0:
+                        negative_timer += 1
+                    if negative_timer >= 5:
+                        raise ValueError("Prolonged negative timer.")
                     if await self.running_phase():
                         await self.update_db()
                         return
@@ -396,11 +417,9 @@ VALUES
                     del GAMES[self.group_id]
                     return
         except Exception as e:
-            del GAMES[self.group_id]
+            GAMES.pop(self.group_id, None)
             try:
-                await self.send_message(
-                    f"Game ended due to {e.__class__.__name__}: {e}.\nMy owner will be notified."
-                )
+                await self.send_message(f"Game ended due to {e.__class__.__name__}: {e}.\nMy owner will be notified.")
             except:
                 pass
             raise
