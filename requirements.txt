@@ -1,4 +1,4 @@
-git+git://github.com/Tinche/aiofiles@master#egg=aiofiles
+aiofiles
 aiodns
 aiohttp
 aiogram

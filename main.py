@@ -80,10 +80,11 @@ async def cmd_help(message: types.Message) -> None:
         "/gameinfo - Game mode descriptions\n"
         "/troubleshoot - See how to solve common issues\n"
         "/reqaddword - Request addition of words\n\n"
-        "You may message my owner [Jono](https://t.me/Trainer_Jono) in *English or Cantonese*.\n"
+        "You may message my owner [Jono](tg://user?id=463998526) in *English or Cantonese*.\n"
         "Official Group: @on9wordchain\n"
         "Word Additions Channel (with status updates): @on9wcwa\n"
-        "Source Code: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)",
+        "Source Code: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
+        "Epic icon designed by [Adri](tg://user?id=303527690)",
         disable_web_page_preview=True
     )
 
@@ -141,14 +142,14 @@ async def cmd_troubleshoot(message: types.Message) -> None:
         "Do not spam commands if I do not respond and try later instead.\n\n"
         "If I do respond:\n"
         "Send /groupid@on9wordchainbot in your group and forward the result to "
-        "[my owner](https://t.me/Trainer_Jono) and tell him you are unable to start games.\n\n"
+        "[my owner](tg://user?id=463998526) and tell him you are unable to start games.\n\n"
         "If you cannot add me into your group:\n"
         "1. Check if you have the permission to add new members in your group. "
         "Groups can be configured to disallow you from doing so.\n"
         "2. Check if there are already 20 bots in your group. If so, a bot has to be removed in your group in "
         "order to add me. Telegram limits the maximum number of bots in a group to 20.\n"
         "3. I cannot help you if you still fail to add me. Please contact your group admin.\n\n"
-        "If you encounter other issues, please message [my owner](https://t.me/Trainer_Jono) stating the "
+        "If you encounter other issues, please message [my owner](tg://user?id=463998526) stating the "
         "issue elaborately.",
         disable_web_page_preview=True
     )
@@ -187,16 +188,22 @@ async def cmd_playinggroups(message: types.Message) -> None:
         await message.reply("No groups are playing games.")
         return
     groups = []
-    for group_id in GAMES:
+
+    async def append_group(group_id: int) -> None:
         try:
             group = await bot.get_chat(group_id)
             url = await group.get_url()
             if url:
-                groups.append(f"[{group.title}]({url}) {group.id} Timer: {GAMES[group_id].time_left}")
+                groups.append(f"[{group.title}]({url}) {group.id} "
+                              f"{len(GAMES[group_id].players)}P Timer: {GAMES[group_id].time_left}")
             else:
-                groups.append(f"{group.title} {group.id} Timer: {GAMES[group_id].time_left}")
+                groups.append(f"{group.title} {group.id} "
+                              f"{len(GAMES[group_id].players)}P Timer: {GAMES[group_id].time_left}")
         except Exception as e:
-            groups.append(f"({e.__class__.__name__}: {e!s}) {group_id} Timer: {GAMES[group_id].time_left}")
+            groups.append(f"({e.__class__.__name__}: {e!s}) {group_id} "
+                          f"{len(GAMES[group_id].players)}P Timer: {GAMES[group_id].time_left}")
+
+    await asyncio.gather(*[append_group(gid) for gid in GAMES])
     await message.reply("\n".join(groups), disable_web_page_preview=True)
 
 
