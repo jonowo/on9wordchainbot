@@ -805,13 +805,17 @@ async def cmd_sql(message: types.Message) -> None:
 
 
 @dp.message_handler(commands=["reqaddword", "reqaddwords"])
-async def cmd_reqaddwords(message: types.Message) -> None:
+async def cmd_reqaddword(message: types.Message) -> None:
     if message.forward_from:
         return
     words_to_add = [w for w in set(message.get_args().lower().split()) if all(c in ascii_lowercase for c in w)]
     if not words_to_add:
-        await message.reply("Function: Request addition of new words. Check @on9wcwa for new words.\n"
-                            "Usage: `/reqaddword wordone wordtwo ...`")
+        await message.reply(
+            "Function: Request addition of new words. Check @on9wcwa for new words.\n"
+            "Please check the spelling of words before requesting so I can process your requests faster.\n"
+            "Proper nouns are not accepted.\n"
+            "Usage: `/reqaddword wordone wordtwo ...`"
+        )
         return
     existing = []
     rejected = []
@@ -840,7 +844,7 @@ async def cmd_reqaddwords(message: types.Message) -> None:
                 else ""), as_html=True)
                                + " is requesting the addition of "
                                + ", ".join(["<i>" + w.capitalize() + "</i>" for w in words_to_add])
-                               + " to the word list.", parse_mode=types.ParseMode.HTML)
+                               + " to the word list. #reqaddword", parse_mode=types.ParseMode.HTML)
     if existing:
         text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
     if rejected:
