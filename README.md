@@ -1,7 +1,7 @@
 # On9 Word Chain Bot
 ![On9 Word Chain Bot logo](https://i.imgur.com/B4hjMC5.jpg)
 
-(Epic icon by @AdriTheDreamer) 
+(Epic icon by [@AdriTheDreamer](https://github.com/AdriTheDreamer)) 
 
 On9 Word Chain Bot hosts games of word chain in Telegram groups.
 
@@ -18,7 +18,7 @@ Links:
 ## Installation
 
 ### Requirements
-Python 3.7+
+Python 3.7+ \
 PostgreSQL 11+
 
 ### Configuration
@@ -38,11 +38,9 @@ Constants:
 - `VIP`: A list of Telegram user ids of VIPs.
 - `VIP_GROUP`: A list of Telegram group ids of VIP groups.
 
-\*: Obtained by contacting [BotFather](https://t.me/BotFather).
-
+\*: Obtained by contacting [BotFather](https://t.me/BotFather). \
 \#: Optional if the payment commands are removed.
-    Bot currently uses Stripe, other payment providers may not be supported.
-
+    Bot currently uses Stripe, other payment providers may not be supported. \
 ^: Set all of these to the same group id for ultimate laziness.
 
 Make sure all of the data is valid to prevent errors.
@@ -51,6 +49,5 @@ Make sure all of the data is valid to prevent errors.
 Create the required tables in your PostgreSQL database by running [init.sql](init.sql).
 
 ### Deployment
-Install the dependencies with `pip install -r requirements.txt`.
-
+Install the dependencies with `pip install -r requirements.txt`. \
 Run `python main.py`.
