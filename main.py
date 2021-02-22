@@ -5,10 +5,11 @@ from decimal import Decimal, getcontext, ROUND_HALF_UP, InvalidOperation
 from random import seed
 from string import ascii_lowercase
 from time import time
+from typing import Dict, Any
 from uuid import uuid4
 
 import aiofiles
-import aiofiles.os  # necessary
+import aiofiles.os
 import matplotlib.pyplot as plt
 from aiogram import executor, types
 from aiogram.types.message import ContentTypes
@@ -17,11 +18,15 @@ from aiogram.utils.markdown import quote_html
 from matplotlib.dates import DateFormatter
 from matplotlib.ticker import MaxNLocator
 
-from constants import (bot, dp, BOT_ID, ON9BOT_ID, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID,
-                       WORD_ADDITION_CHANNEL_ID, GAMES, pool, PROVIDER_TOKEN, GameState, GameSettings,
-                       update_words, amt_donated, get_words, get_words_li)
-from game import (ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame, RequiredLetterGame,
-                  EliminationGame, MixedEliminationGame)
+from constants import (
+    bot, on9bot, dp, VIP, VIP_GROUP, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID, WORD_ADDITION_CHANNEL_ID,
+    GAMES, pool, PROVIDER_TOKEN, GameState, GameSettings, update_words, ADD_TO_GROUP_KEYBOARD
+)
+from game import (
+    ClassicGame, HardModeGame, ChaosGame, ChosenFirstLetterGame, BannedLettersGame,
+    RequiredLetterGame, EliminationGame, MixedEliminationGame
+)
+from utils import send_admin_group, amt_donated, check_word_existence, has_star, filter_words
 
 seed(time())
 getcontext().rounding = ROUND_HALF_UP
@@ -29,129 +34,127 @@ build_time = datetime.now().replace(microsecond=0)
 MAINT_MODE = False
 
 
+async def private_only_command(message: types.Message) -> None:
+    await message.reply("Please use this command in private.")
+
+
 async def groups_only_command(message: types.Message) -> None:
-    await message.reply(
-        "You must run this command in a group.", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
-            types.InlineKeyboardButton("Add me to a group!", url="https://t.me/on9wordchainbot?startgroup=_")
-        ]])
-    )
+    await message.reply("This command can only be used in groups.", reply_markup=ADD_TO_GROUP_KEYBOARD)
 
 
 @dp.message_handler(is_group=False, commands="start")
 async def cmd_start(message: types.Message) -> None:
+    # Handle deep links
     arg = message.get_args()
     if arg == "help":
         await cmd_help(message)
         return
-    elif arg == "donate":
+    if arg == "donate":
         await send_donate_msg(message)
         return
+
     await message.reply(
-        "Hi! I host games of word chain in groups.\n"
-        "Add me to a group to start playing games!",
+        (
+            "Hi! I host games of word chain in Telegram groups.\n"
+            "Add me to a group to start playing games!"
+        ),
         disable_web_page_preview=True,
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
-            types.InlineKeyboardButton("Add me to a group!", url="https://t.me/on9wordchainbot?startgroup=_")
-        ]])
+        reply_markup=ADD_TO_GROUP_KEYBOARD,
     )
 
 
 @dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
 async def new_member(message: types.Message) -> None:
-    if any(user.id == BOT_ID for user in message.new_chat_members):
-        await message.reply("Thanks for adding me. Click /startclassic to start a classic game!", reply=False)
+    if any(user.id == bot.id for user in message.new_chat_members):  # self added to group
+        await message.reply(
+            "Thanks for adding me. Start a classic game with /startclassic!",
+            reply=False,
+        )
     elif message.chat.id == OFFICIAL_GROUP_ID:
-        await message.reply("Welcome to the official On9 Word Chain group!\n"
-                            "Click /startclassic to start a classic game!")
+        await message.reply(
+            "Welcome to the official On9 Word Chain group!\n"
+            "Start a classic game with /startclassic!"
+        )
 
 
 @dp.message_handler(commands="help")
 async def cmd_help(message: types.Message) -> None:
     if message.chat.id < 0:
-        await message.reply("Please use this command in private.", reply_markup=types.InlineKeyboardMarkup(
-            inline_keyboard=[[
-                types.InlineKeyboardButton(
-                    "Send help message in private", url="https://t.me/on9wordchainbot?start=help"
-                )
-            ]]
-        ))
+        await message.reply(
+            "Please use this command in private.",
+            reply_markup=types.InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        types.InlineKeyboardButton(
+                            "Send help message in private",
+                            url="https://t.me/on9wordchainbot?start=help",
+                        )
+                    ]
+                ]
+            ),
+        )
         return
+
     await message.reply(
-        "/gameinfo - Game mode descriptions\n"
-        "/troubleshoot - See how to solve common issues\n"
-        "/reqaddword - Request addition of words\n\n"
-        "You may message my owner [Jono](tg://user?id=463998526) in *English or Cantonese*.\n"
-        "Official Group: @on9wordchain\n"
-        "Word Additions Channel (with status updates): @on9wcwa\n"
-        "Source Code: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
-        "Epic icon designed by [Adri](tg://user?id=303527690)",
-        disable_web_page_preview=True
+        (
+            "/gameinfo - Game mode descriptions\n"
+            "/troubleshoot - See how to solve common issues\n"
+            "/reqaddword - Request addition of words\n\n"
+            "You may message [Jono](tg://user?id=463998526) in *English or Cantonese* for anything about the bot.\n"
+            "Official Group: @on9wordchain\n"
+            "Word Additions Channel (with status updates): @on9wcwa\n"
+            "Source Code: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
+            "Epic icon designed by [Adri](tg://user?id=303527690)"
+        ),
+        disable_web_page_preview=True,
     )
 
 
 @dp.message_handler(commands="gameinfo")
 async def cmd_gameinfo(message: types.Message) -> None:
     if message.chat.id < 0:
-        await message.reply("Please use this command in private.")
+        await private_only_command(message)
         return
     await message.reply(
-        "I host several variations of the word chain game.\n\n"
         "/startclassic - Classic game\n"
-        "Players take turns to answer words starting with the last letter of the previous word within the "
-        "time limit. If they fail to do so, they are eliminated. "
-        "The time limit decreases and the minimum word length limit increases throughout the game.\n\n"
+        "Players take turns to send words starting with the last letter of the previous word.\n\n"
+        "Other modes:\n"
         "/starthard - Hard mode game\n"
-        "Starts with the most difficult settings.\n\n"
-        "/startchaos - Chaos game\n"
-        "Random turn order.\n\n"
+        "/startchaos - Chaos game (random turn order)\n"
         "/startcfl - Chosen first letter game\n"
-        "Words must start with the chosen letter.\n\n"
         "/startbl - Banned letters game\n"
-        "2-4 letters (max one vowel) cannot be present in answers.\n\n"
-        "/startrl - Required letter game\n"
-        "A specific letter must be present in answers.\n\n"
+        "/startrl - Required letter game\n\n"
         "/startelim - Elimination game\n"
-        "Each player's score is their cumulative word length. After each round, the player(s) with the lowest "
-        "score are eliminated.\n\n"
+        "Each player's score is their cumulative word length. "
+        "The lowest scoring players are eliminated after each round.\n\n"
         "/startmelim - Mixed elimination game (donation reward)\n"
-        "Elimination game with four modes: classic, chosen first letter, banned letters and required letter. "
-        "Modes switch every round. You can try out this game mode at @on9wordchain."
+        "Elimination game with different modes. Try at @on9wordchain."
     )
 
 
 @dp.message_handler(commands="troubleshoot")
 async def cmd_troubleshoot(message: types.Message) -> None:
     if message.chat.id < 0:
-        await message.reply("Please use this command in private.")
+        await private_only_command(message)
         return
     await message.reply(
         "If you cannot start games in your group:\n"
-        "1. Check if you typed the correct command, e.g. /startclassic@on9wordchainbot\n"
-        "2. If I say \"Maintenance mode is on. Games are temporarily disabled.\", that means my owner is "
-        "about to deploy an update and you cannot start games for the meantime. "
-        "Check @on9wcwa for status updates.\n"
-        "3. Send /ping@on9wordchainbot in your group.\n\n"
+        "1. If I say maintenance mode is on, an update is waiting to be deployed.\\*\n"
+        "2. Make sure I am present and not muted in your group, and slow mode is off.\n"
+        "3. Send `/ping@on9wordchainbot` in your group.\n\n"
+        "If I respond:\n"
+        "Contact [my owner](tg://user?id=463998526) with your group's id (obtained with /groupid).\n\n"
         "If I do not respond:\n"
-        "a. Check if I am restricted (muted) or if slow mode is enabled in your group. "
-        "I cannot operate normally if I am restricted from sending messages.\n"
-        "b. Check if I am present in your group. If I am not, well, you can't start games lol.\n"
-        "c. I could be offline since my owner is deploying an update. Check @on9wcwa for status updates. "
-        "Please wait patiently until I am online later.\n"
-        "d. If someone in your group spammed me with commands, I am restricted from sending "
-        "messages to your group for minutes or even hours by Telegram. "
-        "Do not spam commands if I do not respond and try later instead.\n\n"
-        "If I do respond:\n"
-        "Send /groupid@on9wordchainbot in your group and forward the result to "
-        "[my owner](tg://user?id=463998526) and tell him you are unable to start games.\n\n"
+        "a. I may be offline since an update is being deployed.\\*\n"
+        "b. If a group member has spammed me with commands, "
+        "I am rate limited for minutes or even hours by Telegram. "
+        "Do not spam commands and try again later.\n\n"
+        "\\*: Please wait and check @on9wcwa for status updates.\n\n"
         "If you cannot add me into your group:\n"
-        "1. Check if you have the permission to add new members in your group. "
-        "Groups can be configured to disallow you from doing so.\n"
-        "2. Check if there are already 20 bots in your group. If so, a bot has to be removed in your group in "
-        "order to add me. Telegram limits the maximum number of bots in a group to 20.\n"
-        "3. I cannot help you if you still fail to add me. Please contact your group admin.\n\n"
-        "If you encounter other issues, please message [my owner](tg://user?id=463998526) stating the "
-        "issue elaborately.",
-        disable_web_page_preview=True
+        "1. Your group may have disabled the addition of new members.\n"
+        "2. There can be at most 20 bots in a group. Check if the limit is reached.\n"
+        "3. Contact your group admin for help. This is not an issue my owner can resolve.\n\n"
+        "If you encounter other issues, please contact [my owner](tg://user?id=463998526)."
     )
 
 
@@ -178,7 +181,7 @@ async def cmd_runinfo(message: types.Message) -> None:
         f"Uptime: `{uptime.days}.{str(uptime).rsplit(maxsplit=1)[-1]}`\n"
         f"Total games: `{len(GAMES)}`\n"
         f"Running games: `{len([g for g in GAMES.values() if g.state == GameState.RUNNING])}`\n"
-        f"Players: `{sum([len(g.players) for g in GAMES.values()])}`"
+        f"Players: `{sum(len(g.players) for g in GAMES.values())}`"
     )
 
 
@@ -193,49 +196,57 @@ async def cmd_playinggroups(message: types.Message) -> None:
         try:
             group = await bot.get_chat(group_id)
             url = await group.get_url()
-            if url:
-                groups.append(f"[{group.title}]({url}) {group.id} "
-                              f"{len(GAMES[group_id].players)}P Timer: {GAMES[group_id].time_left}")
-            else:
-                groups.append(f"{group.title} {group.id} "
-                              f"{len(GAMES[group_id].players)}P Timer: {GAMES[group_id].time_left}")
+            # TODO: resolve weakref exception, possibly aiogram bug?
         except Exception as e:
-            groups.append(f"({e.__class__.__name__}: {e!s}) {group_id} "
-                          f"{len(GAMES[group_id].players)}P Timer: {GAMES[group_id].time_left}")
+            text = f"(<code>{e.__class__.__name__}: {e}</code>)"
+        else:
+            if url:
+                text = f"<a href='{url}'>{quote_html(group.title)}</a>"
+            else:
+                text = f"<b>{group.title}</b>"
+        groups.append(
+            text + (
+                f" <code>{group_id}</code> "
+                f"{len(GAMES[group_id].players_in_game)}/{len(GAMES[group_id].players)}P "
+                f"Timer: {GAMES[group_id].time_left}s"
+            )
+        )
 
     await asyncio.gather(*[append_group(gid) for gid in GAMES])
-    await message.reply("\n".join(groups), disable_web_page_preview=True)
+    await message.reply("\n".join(groups), parse_mode=types.ParseMode.HTML, disable_web_page_preview=True)
 
 
 @dp.message_handler(commands=["exist", "exists"])
 async def cmd_exists(message: types.Message) -> None:
     word = message.text.partition(" ")[2].lower()
-    if not word or any(c not in ascii_lowercase for c in word):
+    if not word or not all(c in ascii_lowercase for c in word):  # No proper argument given
         rmsg = message.reply_to_message
-        if rmsg and rmsg.text and all([c in ascii_lowercase for c in rmsg.text.lower()]):
-            word = message.reply_to_message.text.lower()
+        if rmsg and rmsg.text and all(c in ascii_lowercase for c in rmsg.text.lower()):
+            word = rmsg.text.lower()
         else:
-            await message.reply("Function: Check if I accept a word. "
-                                "Use /reqaddword if you want to request addition of new words.\n"
-                                "Usage: `/exists word`")
+            await message.reply(
+                "Function: Check if a word is in my dictionary. "
+                "Use /reqaddword if you want to request addition of new words.\n"
+                "Usage: `/exists word`"
+            )
             return
-    if word in get_words()[word[0]]:
-        await message.reply(f"_{word.capitalize()}_ EXISTS in my list of words.")
-        return
-    await message.reply(f"_{word.capitalize()}_ DOES NOT EXIST in my list of words.")
+    if check_word_existence(word):
+        await message.reply(f"_{word.capitalize()}_ is *in* my dictionary.")
+    else:
+        await message.reply(f"_{word.capitalize()}_ is *not in* my dictionary.")
 
 
-@dp.message_handler(commands="startclassic")
+@dp.message_handler(commands=["startclassic", "startgame"])
 async def cmd_startclassic(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    if MAINT_MODE:
-        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
-        return
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
+        return
+    if MAINT_MODE:  # Only stop people from starting games, not joining
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
         return
     game = ClassicGame(message.chat.id)
     GAMES[group_id] = game
@@ -247,13 +258,15 @@ async def cmd_starthard(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    if MAINT_MODE:
-        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
-        return
+
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
         return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+
     game = HardModeGame(message.chat.id)
     GAMES[group_id] = game
     await game.main_loop(message)
@@ -264,13 +277,15 @@ async def cmd_startchaos(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    if MAINT_MODE:
-        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
-        return
+
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
         return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+
     game = ChaosGame(message.chat.id)
     GAMES[group_id] = game
     await game.main_loop(message)
@@ -281,13 +296,15 @@ async def cmd_startcfl(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    if MAINT_MODE:
-        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
-        return
+
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
         return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+
     game = ChosenFirstLetterGame(message.chat.id)
     GAMES[group_id] = game
     await game.main_loop(message)
@@ -298,13 +315,15 @@ async def cmd_startbl(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    if MAINT_MODE:
-        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
-        return
+
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
         return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+
     game = BannedLettersGame(message.chat.id)
     GAMES[group_id] = game
     await game.main_loop(message)
@@ -315,13 +334,15 @@ async def cmd_startrl(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    if MAINT_MODE:
-        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
-        return
+
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
         return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+
     game = RequiredLetterGame(message.chat.id)
     GAMES[group_id] = game
     await game.main_loop(message)
@@ -332,13 +353,15 @@ async def cmd_startelim(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    if MAINT_MODE:
-        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
-        return
+
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
         return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+
     game = EliminationGame(message.chat.id)
     GAMES[group_id] = game
     await game.main_loop(message)
@@ -349,20 +372,26 @@ async def cmd_startmixedelim(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
-    if (message.chat.id not in VIP_GROUP and message.from_user.id not in VIP
-            and (await amt_donated(message.from_user.id)) < 30):
+
+    if (
+        message.chat.id not in VIP_GROUP
+        and message.from_user.id not in VIP
+        and (await amt_donated(message.from_user.id)) < 30
+    ):
         await message.reply(
             "This game mode is a donation reward.\n"
-            "You may try out this game mode at @on9wordchain without donating."
+            "You can try this game mode at @on9wordchain."
         )
         return
-    if MAINT_MODE:
-        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
-        return
+
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
         return
+    if MAINT_MODE:
+        await message.reply("Maintenance mode is on. Games are temporarily disabled.")
+        return
+
     game = MixedEliminationGame(message.chat.id)
     GAMES[group_id] = game
     await game.main_loop(message)
@@ -373,10 +402,11 @@ async def cmd_join(message: types.Message) -> None:
     if message.chat.id > 0:
         await groups_only_command(message)
         return
+
     group_id = message.chat.id
     if group_id in GAMES:
         await GAMES[group_id].join(message)
-    # Due to privacy settings, no reply is given when there is no running game
+    # No reply is given when there is no running game in case the user was joining another game
 
 
 @dp.message_handler(is_group=True, is_owner=True, commands="forcejoin")
@@ -385,12 +415,14 @@ async def cmd_forcejoin(message: types.Message) -> None:
     rmsg = message.reply_to_message
     if group_id not in GAMES:
         return
-    if rmsg and rmsg.from_user.is_bot:
-        if rmsg.from_user.id != ON9BOT_ID:
+    if rmsg and rmsg.from_user.is_bot:  # On9Bot only
+        if rmsg.from_user.id != on9bot.id:
             return
         if isinstance(GAMES[group_id], EliminationGame):
-            await message.reply("Sorry, [On9Bot](https://t.me/On9Bot) can't play elimination games.",
-                                disable_web_page_preview=True)
+            await message.reply(
+                "Sorry, [On9Bot](https://t.me/On9Bot) can't play elimination games.",
+                disable_web_page_preview=True,
+            )
             return
     await GAMES[message.chat.id].forcejoin(message)
 
@@ -447,28 +479,37 @@ async def addvp(message: types.Message) -> None:
     if group_id not in GAMES:
         return
     if isinstance(GAMES[group_id], EliminationGame):
-        await message.reply("Sorry, [On9Bot](https://t.me/On9Bot) can't play elimination games.",
-                            disable_web_page_preview=True)
+        await message.reply(
+            f"Sorry, [On9Bot](https://t.me/{(await on9bot.me).username}) can't play elimination games.",
+            disable_web_page_preview=True,
+        )
         return
-    await GAMES[group_id].addvp(message)
+    await GAMES[group_id].addvp()
 
 
 @dp.message_handler(is_group=True, commands="remvp")
 async def remvp(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES:
-        await GAMES[group_id].remvp(message)
+        await GAMES[group_id].remvp()
 
 
 @dp.message_handler(is_group=True, is_owner=True, commands="incmaxp")
 async def cmd_incmaxp(message: types.Message) -> None:
+    # Thought this could be useful when I implemented this
+    # Nope
     group_id = message.chat.id
-    if (group_id not in GAMES or GAMES[group_id].state != GameState.JOINING
-            or GAMES[group_id].max_players == GameSettings.INCREASED_MAX_PLAYERS):
+    if (
+        group_id not in GAMES
+        or GAMES[group_id].state != GameState.JOINING
+        or GAMES[group_id].max_players == GameSettings.INCREASED_MAX_PLAYERS
+    ):
         return
-    await message.reply(f"Max players for this game increased from {GAMES[group_id].max_players} to "
-                        f"{GameSettings.INCREASED_MAX_PLAYERS}.")
     GAMES[group_id].max_players = GameSettings.INCREASED_MAX_PLAYERS
+    await message.reply(
+        "Max players for this game increased from "
+        f"{GAMES[group_id].max_players} to {GameSettings.INCREASED_MAX_PLAYERS}."
+    )
 
 
 @dp.message_handler(is_owner=True, commands="maintmode")
@@ -486,203 +527,287 @@ async def cmd_leave(message: types.Message) -> None:
 @dp.message_handler(commands=["stat", "stats", "stalk"])
 async def cmd_stats(message: types.Message) -> None:
     rmsg = message.reply_to_message
-    if (message.chat.id < 0 and not message.get_command().partition("@")[2]
-            or rmsg and (rmsg.from_user.is_bot and rmsg.from_user.id != ON9BOT_ID and not rmsg.forward_from
-                         or rmsg.forward_from and rmsg.forward_from.is_bot and rmsg.forward_from.id != ON9BOT_ID)):
+    if message.chat.id < 0 and not message.get_command().partition("@")[2]:
         return
-    user = rmsg.forward_from or rmsg.from_user if rmsg else message.from_user
+
+    user = (rmsg.forward_from or rmsg.from_user) if rmsg else message.from_user
     async with pool.acquire() as conn:
         res = await conn.fetchrow("SELECT * FROM player WHERE user_id = $1;", user.id)
+
     if not res:
-        await message.reply(f"No statistics for {user.get_mention(as_html=True)}!", parse_mode=types.ParseMode.HTML)
+        await message.reply(
+            f"No statistics for {user.get_mention(as_html=True)}!",
+            parse_mode=types.ParseMode.HTML,
+        )
         return
-    await message.reply(
-        f"\U0001f4ca Statistics for "
-        + user.get_mention(name=user.full_name + (" \u2b50\ufe0f" if user.id in VIP or bool(await amt_donated(user.id))
-                                                  else ""), as_html=True)
-        + f":\n"
-          f"<b>{res['game_count']}</b> games played\n"
-          f"<b>{res['win_count']} ("
-          f"{'0%' if not res['win_count'] else format(res['win_count'] / res['game_count'], '.0%')})</b> games won\n"
-          f"<b>{res['word_count']}</b> total words played\n"
-          f"<b>{res['letter_count']}</b> total letters played"
-        + (f"\nLongest word used: <b>{res['longest_word'].capitalize()}</b>" if res["longest_word"] else ""),
-        parse_mode=types.ParseMode.HTML
+
+    mention = user.get_mention(
+        name=user.full_name + (" \u2b50\ufe0f" if await has_star(user.id) else ""),
+        as_html=True,
     )
+    text = f"\U0001f4ca Statistics for {mention}:\n"
+    text += f"<b>{res['game_count']}</b> games played\n"
+    text += f"<b>{res['win_count']} ({res['win_count'] / res['game_count']:.0%})</b> games won\n"
+    text += f"<b>{res['word_count']}</b> total words played\n"
+    text += f"<b>{res['letter_count']}</b> total letters played\n"
+    if res["longest_word"]:
+        text += f"Longest word: <b>{res['longest_word'].capitalize()}</b>"
+    await message.reply(text.rstrip(), parse_mode=types.ParseMode.HTML)
 
 
 @dp.message_handler(commands="groupstats")
-async def cmd_groupstats(message: types.Message) -> None:
+async def cmd_groupstats(message: types.Message) -> None:  # TODO: Add top players in group (up to 5?)
     if message.chat.id > 0:
         await groups_only_command(message)
         return
+
     async with pool.acquire() as conn:
-        player_count, game_count, word_count, letter_count = await conn.fetchrow("""\
-SELECT COUNT(DISTINCT user_id), COUNT(DISTINCT game_id), SUM(word_count), SUM(letter_count)
-    FROM gameplayer
-    WHERE group_id = $1;""", message.chat.id)
-    await message.reply(f"\U0001f4ca Statistics for <b>{quote_html(message.chat.title)}</b>\n"
-                        f"<b>{player_count}</b> players\n"
-                        f"<b>{game_count}</b> games played\n"
-                        f"<b>{word_count}</b> total words played\n"
-                        f"<b>{letter_count}</b> total letters played",
-                        parse_mode=types.ParseMode.HTML)
+        player_cnt, game_cnt, word_cnt, letter_cnt = await conn.fetchrow(
+            """\
+            SELECT COUNT(DISTINCT user_id), COUNT(DISTINCT game_id), SUM(word_count), SUM(letter_count)
+                FROM gameplayer
+                WHERE group_id = $1;""",
+            message.chat.id,
+        )
+    await message.reply(
+        (
+            f"\U0001f4ca Statistics for <b>{quote_html(message.chat.title)}</b>\n"
+            f"<b>{player_cnt}</b> players\n"
+            f"<b>{game_cnt}</b> games played\n"
+            f"<b>{word_cnt}</b> total words played\n"
+            f"<b>{letter_cnt}</b> total letters played"
+        ),
+        parse_mode=types.ParseMode.HTML,
+    )
 
 
 @dp.message_handler(commands="globalstats")
-async def cmd_globalstats(message: types.Message) -> None:
+async def cmd_globalstats(message: types.Message) -> None:  # TODO: Cache this maybe every 5s
     async with pool.acquire() as conn:
-        group_count, game_count = await conn.fetchrow("SELECT COUNT(DISTINCT group_id), COUNT(*) FROM game;")
-        player_count, word_count, letter_count = await conn.fetchrow(
+        group_cnt, game_cnt = await conn.fetchrow(
+            "SELECT COUNT(DISTINCT group_id), COUNT(*) FROM game;"
+        )
+        player_cnt, word_cnt, letter_cnt = await conn.fetchrow(
             "SELECT COUNT(*), SUM(word_count), SUM(letter_count) FROM player;"
         )
-    await message.reply("\U0001f4ca Global statistics\n"
-                        f"*{group_count}* groups\n"
-                        f"*{player_count}* players\n"
-                        f"*{game_count}* games played\n"
-                        f"*{word_count}* total words played\n"
-                        f"*{letter_count}* total letters played")
+    await message.reply(
+        "\U0001f4ca Global statistics\n"
+        f"*{group_cnt}* groups\n"
+        f"*{player_cnt}* players\n"
+        f"*{game_cnt}* games played\n"
+        f"*{word_cnt}* total words played\n"
+        f"*{letter_cnt}* total letters played"
+    )
 
 
-@dp.message_handler(is_vip=True, commands=["trend", "trends"])
-async def cmd_trends(message: types.Message) -> None:
+@dp.message_handler(is_owner=True, commands=["trend", "trends"])
+async def cmd_trends(message: types.Message) -> None:  # TODO: Optimize
     try:
         days = int(message.get_args() or 7)
         assert days > 1, "smh"
     except (ValueError, AssertionError) as e:
         await message.reply(f"`{e.__class__.__name__}: {str(e)}`")
         return
+
     d = datetime.now().date()
     tp = [d - timedelta(days=i) for i in range(days - 1, -1, -1)]
     f = DateFormatter("%b %d" if days < 180 else "%b" if days < 335 else "%b %Y")
+
+    async def get_daily_games() -> Dict[str, Any]:
+        async with pool.acquire() as conn:
+            return dict(
+                await conn.fetch(
+                    """\
+                    SELECT start_time::DATE d, COUNT(start_time::DATE)
+                        FROM game
+                        WHERE start_time::DATE >= $1
+                        GROUP BY d
+                        ORDER BY d;""",
+                    d - timedelta(days=days - 1),
+                )
+            )
+
+    async def get_active_players() -> Dict[str, Any]:
+        async with pool.acquire() as conn:
+            return dict(
+                await conn.fetch(
+                    """\
+                    SELECT game.start_time::DATE d, COUNT(DISTINCT gameplayer.user_id)
+                        FROM gameplayer
+                        INNER JOIN game ON gameplayer.game_id = game.id
+                        WHERE game.start_time::DATE >= $1
+                        GROUP BY d
+                        ORDER BY d;""",
+                    d - timedelta(days=days - 1),
+                )
+            )
+
+    async def get_active_groups() -> Dict[str, Any]:
+        async with pool.acquire() as conn:
+            return dict(
+                await conn.fetch(
+                    """\
+                    SELECT start_time::DATE d, COUNT(DISTINCT group_id)
+                        FROM game
+                        WHERE game.start_time::DATE >= $1
+                        GROUP BY d
+                        ORDER BY d;""",
+                    d - timedelta(days=days - 1),
+                )
+            )
+
+    async def get_cumulative_groups() -> Dict[str, Any]:
+        async with pool.acquire() as conn:
+            return dict(
+                await conn.fetch(
+                    """\
+                    SELECT *
+                        FROM (
+                            SELECT d, SUM(count) OVER (ORDER BY d)
+                                FROM (
+                                    SELECT d, COUNT(group_id)
+                                        FROM (
+                                            SELECT DISTINCT group_id, MIN(start_time::DATE) d
+                                                FROM game
+                                                GROUP BY group_id
+                                        ) gd
+                                        GROUP BY d
+                                ) dg
+                        ) ds
+                        WHERE d >= $1;""",
+                    d - timedelta(days=days - 1),
+                )
+            )
+
+    daily_games, active_players, active_groups, cumulative_groups = await asyncio.gather(
+        get_daily_games(), get_active_players(), get_active_groups(), get_cumulative_groups()
+    )
+
+    # TODO: Figure out what this does
     async with pool.acquire() as conn:
-        daily_games = dict(await conn.fetch("""\
-SELECT start_time::DATE d, COUNT(start_time::DATE)
-    FROM game
-    WHERE start_time::DATE >= $1
-    GROUP BY d
-    ORDER BY d;""", d - timedelta(days=days - 1)))
-        active_players = dict(await conn.fetch("""\
-SELECT game.start_time::DATE d, COUNT(DISTINCT gameplayer.user_id)
-    FROM gameplayer
-    INNER JOIN game ON gameplayer.game_id = game.id
-    WHERE game.start_time::DATE >= $1
-    GROUP BY d
-    ORDER BY d;""", d - timedelta(days=days - 1)))
-        active_groups = dict(await conn.fetch("""\
-SELECT start_time::DATE d, COUNT(DISTINCT group_id)
-    FROM game
-    WHERE game.start_time::DATE >= $1
-    GROUP BY d
-    ORDER BY d;""", d - timedelta(days=days - 1)))
-        cumulative_groups = dict(await conn.fetch("""\
-SELECT *
-    FROM (
-        SELECT d, SUM(count) OVER (ORDER BY d)
-            FROM (
-                SELECT d, COUNT(group_id)
-                    FROM (
-                        SELECT DISTINCT group_id, MIN(start_time::DATE) d
-                            FROM game
-                            GROUP BY group_id
-                    ) gd
-                    GROUP BY d
-            ) dg
-    ) ds
-    WHERE d >= $1;""", d - timedelta(days=days - 1)))
         dt = d - timedelta(days=days)
         for i in range(days):
             dt += timedelta(days=1)
             if dt not in cumulative_groups:
                 if not i:
                     cumulative_groups[dt] = await conn.fetchval(
-                        "SELECT COUNT(DISTINCT group_id) FROM game WHERE start_time::DATE <= $1;", dt
+                        "SELECT COUNT(DISTINCT group_id) FROM game WHERE start_time::DATE <= $1;",
+                        dt,
                     )
                 else:
                     cumulative_groups[dt] = cumulative_groups[dt - timedelta(days=1)]
-        cumulative_players = dict(await conn.fetch("""\
-SELECT *
-    FROM (
-        SELECT d, SUM(count) OVER (ORDER BY d)
-            FROM (
-                SELECT d, COUNT(user_id)
+        cumulative_players = dict(
+            await conn.fetch(
+                """\
+                SELECT *
                     FROM (
-                        SELECT DISTINCT user_id, MIN(start_time::DATE) d
-                            FROM gameplayer
-                            INNER JOIN game ON game_id = game.id
-                            GROUP BY user_id
-                    ) ud
-                    GROUP BY d
-            ) du
-    ) ds
-    WHERE d >= $1;""", d - timedelta(days=days - 1)))
+                        SELECT d, SUM(count) OVER (ORDER BY d)
+                            FROM (
+                                SELECT d, COUNT(user_id)
+                                    FROM (
+                                        SELECT DISTINCT user_id, MIN(start_time::DATE) d
+                                            FROM gameplayer
+                                            INNER JOIN game ON game_id = game.id
+                                            GROUP BY user_id
+                                    ) ud
+                                    GROUP BY d
+                            ) du
+                    ) ds
+                    WHERE d >= $1;""",
+                d - timedelta(days=days - 1),
+            )
+        )
         dt = d - timedelta(days=days)
         for i in range(days):
             dt += timedelta(days=1)
             if dt not in cumulative_players:
                 if not i:
-                    cumulative_players[dt] = await conn.fetchval("""\
-    SELECT COUNT(DISTINCT user_id)
-        FROM gameplayer
-        INNER JOIN game ON game_id = game.id
-        WHERE start_time <= $1;""", dt)
+                    cumulative_players[dt] = await conn.fetchval(
+                        """\
+                        SELECT COUNT(DISTINCT user_id)
+                            FROM gameplayer
+                            INNER JOIN game ON game_id = game.id
+                            WHERE start_time <= $1;""",
+                        dt,
+                    )
                 else:
                     cumulative_players[dt] = cumulative_players[dt - timedelta(days=1)]
-        game_mode_play_cnt = await conn.fetch("""\
-SELECT COUNT(game_mode), game_mode
-    FROM game
-    WHERE start_time::DATE >= $1
-    GROUP BY game_mode
-    ORDER BY count;""", d - timedelta(days=days - 1))
-        total_games = sum(i[0] for i in game_mode_play_cnt)
-    while os.path.exists("trends.jpg"):
+        game_mode_play_cnt = await conn.fetch(
+            """\
+            SELECT COUNT(game_mode), game_mode
+                FROM game
+                WHERE start_time::DATE >= $1
+                GROUP BY game_mode
+                ORDER BY count;""",
+            d - timedelta(days=days - 1),
+        )
+    total_games = sum(i[0] for i in game_mode_play_cnt)
+
+    while os.path.exists("trends.jpg"):  # Another /trend command has not finished processing
         await asyncio.sleep(0.1)
+
     plt.figure(figsize=(15, 8))
     plt.subplots_adjust(hspace=0.4)
     plt.suptitle(f"Trends in the Past {days} Days", size=25)
+
+    # Draw the 6 subplots
+
     sp = plt.subplot(231)
     sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))  # Force y-axis intervals to be integral
-    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment="right")
     plt.title("Games Played", size=18)
     plt.plot(tp, [daily_games.get(i, 0) for i in tp])
     plt.ylim(ymin=0)
+
     sp = plt.subplot(232)
     sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))
-    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment="right")
     plt.title("Active Groups", size=18)
     plt.plot(tp, [active_groups.get(i, 0) for i in tp])
     plt.ylim(ymin=0)
+
     sp = plt.subplot(233)
     sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))
-    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment="right")
     plt.title("Active Players", size=18)
     plt.plot(tp, [active_players.get(i, 0) for i in tp])
     plt.ylim(ymin=0)
+
     plt.subplot(234)
     labels = [i[1] for i in game_mode_play_cnt]
-    colors = ["dark maroon", "dark peach", "orange", "leather", "mustard", "teal", "french blue", "booger"][
-             8 - len(game_mode_play_cnt):]
-    slices, text = plt.pie([i[0] for i in game_mode_play_cnt],
-                           labels=[f"{i[0] / total_games:.1%} ({i[0]})" if i[0] / total_games >= 0.03
-                                   else "" for i in game_mode_play_cnt],
-                           colors=["xkcd:" + c for c in colors], startangle=90)
+    colors = [
+                 "dark maroon", "dark peach", "orange", "leather", "mustard", "teal", "french blue", "booger"
+             ][8 - len(game_mode_play_cnt):]
+    slices, text = plt.pie(
+        [i[0] for i in game_mode_play_cnt],
+        labels=[
+            f"{i[0] / total_games:.1%} ({i[0]})" if i[0] / total_games >= 0.03 else "" for i in game_mode_play_cnt
+        ],
+        colors=["xkcd:" + c for c in colors],
+        startangle=90,
+    )
     plt.legend(slices, labels, title="Game Modes Played", fontsize="x-small", loc="best")
     plt.axis("equal")
+
     sp = plt.subplot(235)
     sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))
-    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment="right")
     plt.title("Cumulative Groups", size=18)
     plt.plot(tp, [cumulative_groups[i] for i in tp])
+
     sp = plt.subplot(236)
     sp.xaxis.set_major_formatter(f)
     sp.yaxis.set_major_locator(MaxNLocator(integer=True))
-    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment='right')
+    plt.setp(sp.xaxis.get_majorticklabels(), rotation=45, horizontalalignment="right")
     plt.title("Cumulative Players", size=18)
     plt.plot(tp, [cumulative_players[i] for i in tp])
+
+    # Save the plot as a jpg and send it
+
     plt.savefig("trends.jpg", bbox_inches="tight")
     plt.close("all")
     async with aiofiles.open("trends.jpg", "rb") as f:
@@ -693,9 +818,19 @@ SELECT COUNT(game_mode), game_mode
 @dp.message_handler(commands="donate")
 async def cmd_donate(message: types.Message) -> None:
     if message.chat.id < 0:
-        await message.reply("Please donate in private.", reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
-            types.InlineKeyboardButton("Donate in private", url="https://t.me/on9wordchainbot?start=donate")
-        ]]))
+        await message.reply(
+            "Slide into my DMs to donate!",
+            reply_markup=types.InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        types.InlineKeyboardButton(
+                            "Donate in private",
+                            url="https://t.me/on9wordchainbot?start=donate",
+                        )
+                    ]
+                ]
+            ),
+        )
         return
     arg = message.get_args()
     if not arg:
@@ -709,8 +844,9 @@ async def cmd_donate(message: types.Message) -> None:
             await message.reply("Invalid amount.\nPlease enter a positive number.")
         except BadRequest as e:
             if str(e) == "Currency_total_amount_invalid":
-                await message.reply("Sorry, the entered amount was not in range (1-10000). "
-                                    "Please try another amount.")
+                await message.reply(
+                    "Sorry, the entered amount was not in range (1-10000). " "Please try another amount."
+                )
                 return
             raise
 
@@ -724,17 +860,19 @@ async def send_donate_msg(message: types.Message) -> None:
         "Any amount: \u2b50\ufe0f is displayed next to your name during games.\n"
         "10 HKD (cumulative): Search words in inline queries (e.g. `@on9wordchainbot test`)\n"
         "30 HKD (cumulative): Start mixed elimination games (`/startmelim`)\n",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-            [
-                types.InlineKeyboardButton("10 HKD", callback_data="donate:10"),
-                types.InlineKeyboardButton("20 HKD", callback_data="donate:20"),
-                types.InlineKeyboardButton("30 HKD", callback_data="donate:30")
-            ],
-            [
-                types.InlineKeyboardButton("50 HKD", callback_data="donate:50"),
-                types.InlineKeyboardButton("100 HKD", callback_data="donate:100")
+        reply_markup=types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton("10 HKD", callback_data="donate:10"),
+                    types.InlineKeyboardButton("20 HKD", callback_data="donate:20"),
+                    types.InlineKeyboardButton("30 HKD", callback_data="donate:30"),
+                ],
+                [
+                    types.InlineKeyboardButton("50 HKD", callback_data="donate:50"),
+                    types.InlineKeyboardButton("100 HKD", callback_data="donate:100"),
+                ],
             ]
-        ])
+        ),
     )
 
 
@@ -747,7 +885,7 @@ async def send_donate_invoice(user_id: int, amt: int) -> None:
         provider_token=PROVIDER_TOKEN,
         start_parameter="donate",
         currency="HKD",
-        prices=[types.LabeledPrice("Donation", amt)]
+        prices=[types.LabeledPrice("Donation", amt)],
     )
 
 
@@ -757,9 +895,9 @@ async def pre_checkout_query_handler(pre_checkout_query: types.PreCheckoutQuery)
         await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
     else:
         await bot.answer_pre_checkout_query(
-            pre_checkout_query.id, ok=False,
-            error_message="Donation unsuccessful. No money was deducted from your credit card. "
-                          "Mind requesting a new invoice and try again? :D"
+            pre_checkout_query.id,
+            ok=False,
+            error_message="Donation unsuccessful. No payment was carried out. Mind trying again later? :D",
         )
 
 
@@ -770,21 +908,39 @@ async def successful_payment_handler(message: types.Message) -> None:
     amt = Decimal(payment.total_amount) / 100
     dt = datetime.now().replace(microsecond=0)
     async with pool.acquire() as conn:
-        await conn.execute("""\
-INSERT INTO donation (donation_id, user_id, amount, donate_time, telegram_payment_charge_id, provider_payment_charge_id)
-VALUES
-    ($1, $2, $3::NUMERIC, $4, $5, $6)""",
-                           donation_id, message.from_user.id, str(amt), dt,
-                           payment.telegram_payment_charge_id, payment.provider_payment_charge_id)
-    await message.reply(f"Your donation of {amt} HKD is successful.\n"
-                        "Thank you for your support! \u2764\ufe0f\n"
-                        f"Donation id: #on9wcbot\\_{donation_id}",
-                        reply=False)
-    await bot.send_message(ADMIN_GROUP_ID,
-                           f"Received donation of {amt} HKD from {message.from_user.get_mention(as_html=True)} "
-                           f"(id: <code>{message.from_user.id}</code>).\n"
-                           f"Donation id: #on9wcbot\\_{donation_id}",
-                           parse_mode=types.ParseMode.HTML)
+        await conn.execute(
+            """\
+            INSERT INTO donation (
+                donation_id, user_id, amount, donate_time,
+                telegram_payment_charge_id, provider_payment_charge_id
+            )
+            VALUES
+                ($1, $2, $3::NUMERIC, $4, $5, $6);""",
+            donation_id,
+            message.from_user.id,
+            str(amt),
+            dt,
+            payment.telegram_payment_charge_id,
+            payment.provider_payment_charge_id,
+        )
+    await asyncio.gather(
+        message.answer(
+            (
+                f"Your donation of {amt} HKD is successful.\n"
+                "Thank you for your support! :D\n"
+                f"Donation id: #on9wcbot_{donation_id}"
+            ),
+            parse_mode=types.ParseMode.HTML,
+        ),
+        send_admin_group(
+            (
+                f"Received donation of {amt} HKD from {message.from_user.get_mention(as_html=True)} "
+                f"(id: <code>{message.from_user.id}</code>).\n"
+                f"Donation id: #on9wcbot_{donation_id}"
+            ),
+            parse_mode=types.ParseMode.HTML,
+        )
+    )
 
 
 @dp.message_handler(is_owner=True, commands="sql")
@@ -795,9 +951,11 @@ async def cmd_sql(message: types.Message) -> None:
     except Exception as e:
         await message.reply(f"`{e.__class__.__name__}: {str(e)}`")
         return
+
     if not res:
         await message.reply("No results returned.")
         return
+
     text = ["*" + " - ".join(res[0].keys()) + "*"]
     for r in res:
         text.append("`" + " - ".join([str(i) for i in r.values()]) + "`")
@@ -808,6 +966,7 @@ async def cmd_sql(message: types.Message) -> None:
 async def cmd_reqaddword(message: types.Message) -> None:
     if message.forward_from:
         return
+
     words_to_add = [w for w in set(message.get_args().lower().split()) if all(c in ascii_lowercase for c in w)]
     if not words_to_add:
         await message.reply(
@@ -817,13 +976,15 @@ async def cmd_reqaddword(message: types.Message) -> None:
             "Usage: `/reqaddword wordone wordtwo ...`"
         )
         return
+
     existing = []
     rejected = []
     rejected_with_reason = []
-    for w in words_to_add[:]:
-        if w in get_words()[w[0]]:
+    for w in words_to_add[:]:  # Iterate through a copy so removal of elements is possible
+        if check_word_existence(w):
             existing.append("_" + w.capitalize() + "_")
             words_to_add.remove(w)
+
     async with pool.acquire() as conn:
         rej = await conn.fetch("SELECT word, reason FROM wordlist WHERE NOT accepted;")
     for word, reason in rej:
@@ -835,16 +996,20 @@ async def cmd_reqaddword(message: types.Message) -> None:
             rejected_with_reason.append((word, reason))
         else:
             rejected.append(word)
+
     text = ""
     if words_to_add:
         text += f"Submitted {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} for approval.\n"
-        await bot.send_message(ADMIN_GROUP_ID, message.from_user.get_mention(
-            name=message.from_user.full_name + (
-                " \u2b50\ufe0f" if message.from_user.id in VIP or bool(await amt_donated(message.from_user.id))
-                else ""), as_html=True)
-                               + " is requesting the addition of "
-                               + ", ".join(["<i>" + w.capitalize() + "</i>" for w in words_to_add])
-                               + " to the word list. #reqaddword", parse_mode=types.ParseMode.HTML)
+        await send_admin_group(
+            message.from_user.get_mention(
+                name=message.from_user.full_name + (" \u2b50\ufe0f" if await has_star(message.from_user.id) else ""),
+                as_html=True,
+            )
+            + " is requesting the addition of "
+            + ", ".join(["<i>" + w.capitalize() + "</i>" for w in words_to_add])
+            + " to the word list. #reqaddword",
+            parse_mode=types.ParseMode.HTML,
+        )
     if existing:
         text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
     if rejected:
@@ -863,7 +1028,7 @@ async def cmd_addwords(message: types.Message) -> None:
     rejected = []
     rejected_with_reason = []
     for w in words_to_add[:]:
-        if w in get_words()[w[0]]:
+        if check_word_existence(w):
             existing.append("_" + w.capitalize() + "_")
             words_to_add.remove(w)
     async with pool.acquire() as conn:
@@ -880,8 +1045,10 @@ async def cmd_addwords(message: types.Message) -> None:
     text = ""
     if words_to_add:
         async with pool.acquire() as conn:
-            await conn.executemany("INSERT INTO wordlist (word, accepted) VALUES ($1, true)",
-                                   [(w,) for w in words_to_add])
+            await conn.executemany(
+                "INSERT INTO wordlist (word, accepted) VALUES ($1, true)",
+                [(w,) for w in words_to_add],
+            )
         text += f"Added {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.\n"
     if existing:
         text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
@@ -894,9 +1061,11 @@ async def cmd_addwords(message: types.Message) -> None:
         return
     await update_words()
     await msg.edit_text(msg.md_text + "\n\nWord list updated.")
-    await bot.send_message(WORD_ADDITION_CHANNEL_ID,
-                           f"Added {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.",
-                           disable_notification=True)
+    await bot.send_message(
+        WORD_ADDITION_CHANNEL_ID,
+        f"Added {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.",
+        disable_notification=True,
+    )
 
 
 @dp.message_handler(is_owner=True, commands="rejword")
@@ -909,8 +1078,11 @@ async def cmd_rejword(message: types.Message) -> None:
     async with pool.acquire() as conn:
         r = await conn.fetchrow("SELECT accepted, reason FROM wordlist WHERE word = $1;", word)
         if r is None:
-            await conn.execute("INSERT INTO wordlist (word, accepted, reason) VALUES ($1, false, $2)",
-                               word, reason.strip() or None)
+            await conn.execute(
+                "INSERT INTO wordlist (word, accepted, reason) VALUES ($1, false, $2)",
+                word,
+                reason.strip() or None,
+            )
     word = word.capitalize()
     if r is None:
         await message.reply(f"_{word}_ rejected.")
@@ -925,26 +1097,41 @@ async def cmd_rejword(message: types.Message) -> None:
 @dp.message_handler(commands="feedback")
 async def cmd_feedback(message: types.Message) -> None:
     rmsg = message.reply_to_message
-    if (message.chat.id < 0 and not message.get_command().partition("@")[2]
-            and (not rmsg or rmsg.from_user.id != BOT_ID) or message.forward_from):
+    if (
+        message.chat.id < 0
+        and not message.get_command().partition("@")[2]
+        and (not rmsg or rmsg.from_user.id != bot.id)
+        or message.forward_from
+    ):  # Make sure feedback is directed at this bot
         return
+
     arg = message.get_full_command()[1]
     if not arg:
-        await message.reply("Function: Send feedback to my owner.\n"
-                            "Usage: `/feedback@on9wordchainbot feedback`")
+        await message.reply(
+            "Function: Send feedback to my owner.\n"
+            "Usage: `/feedback@on9wordchainbot feedback`"
+        )
         return
-    await message.forward(ADMIN_GROUP_ID)
-    await message.reply("Feedback sent successfully.")
+
+    await asyncio.gather(
+        message.forward(ADMIN_GROUP_ID),
+        message.reply("Feedback sent successfully."),
+    )
 
 
 @dp.message_handler(is_group=True, regexp=r"^\w+$")
 @dp.edited_message_handler(is_group=True, regexp=r"^\w+$")
 async def message_handler(message: types.Message) -> None:
     group_id = message.chat.id
-    if (group_id in GAMES and GAMES[group_id].players_in_game
-            and message.from_user.id == GAMES[group_id].players_in_game[0].user_id
-            and not GAMES[group_id].answered and GAMES[group_id].accepting_answers
-            and all([c in ascii_lowercase for c in message.text.lower()])):
+    if (
+        group_id in GAMES
+        and GAMES[group_id].players_in_game
+        and message.from_user.id == GAMES[group_id].players_in_game[0].user_id
+        and not GAMES[group_id].answered
+        and GAMES[group_id].accepting_answers
+        # TODO: Modify to support other languages
+        and all([c in ascii_lowercase for c in message.text.lower()])
+    ):
         await GAMES[group_id].handle_answer(message)
 
 
@@ -952,56 +1139,91 @@ async def message_handler(message: types.Message) -> None:
 async def inline_handler(inline_query: types.InlineQuery):
     text = inline_query.query.lower()
     if not text or inline_query.from_user.id not in VIP and (await amt_donated(inline_query.from_user.id)) < 10:
-        await inline_query.answer([
-            types.InlineQueryResultArticle(
-                id=str(uuid4()), title="Start a classic game", description="/startclassic@on9wordchainbot",
-                input_message_content=types.InputTextMessageContent("/startclassic@on9wordchainbot")
-            ),
-            types.InlineQueryResultArticle(
-                id=str(uuid4()), title="Start a hard mode game", description="/starthard@on9wordchainbot",
-                input_message_content=types.InputTextMessageContent("/starthard@on9wordchainbot")
-            ),
-            types.InlineQueryResultArticle(
-                id=str(uuid4()), title="Start a chaos game", description="/startchaos@on9wordchainbot",
-                input_message_content=types.InputTextMessageContent("/startchaos@on9wordchainbot")
-            ),
-            types.InlineQueryResultArticle(
-                id=str(uuid4()), title="Start a chosen first letter game", description="/startcfl@on9wordchainbot",
-                input_message_content=types.InputTextMessageContent("/startcfl@on9wordchainbot")
-            ),
-            types.InlineQueryResultArticle(
-                id=str(uuid4()), title="Start a banned letters game", description="/startbl@on9wordchainbot",
-                input_message_content=types.InputTextMessageContent("/startbl@on9wordchainbot")
-            ),
-            types.InlineQueryResultArticle(
-                id=str(uuid4()), title="Start a required letter game", description="/startrl@on9wordchainbot",
-                input_message_content=types.InputTextMessageContent("/startrl@on9wordchainbot")
-            ),
-            types.InlineQueryResultArticle(
-                id=str(uuid4()), title="Start an elimination game", description="/startelim@on9wordchainbot",
-                input_message_content=types.InputTextMessageContent("/startelim@on9wordchainbot")
-            )
-        ], is_personal=not text)
+        await inline_query.answer(
+            [
+                types.InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title="Start a classic game",
+                    description="/startclassic@on9wordchainbot",
+                    input_message_content=types.InputTextMessageContent("/startclassic@on9wordchainbot"),
+                ),
+                types.InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title="Start a hard mode game",
+                    description="/starthard@on9wordchainbot",
+                    input_message_content=types.InputTextMessageContent("/starthard@on9wordchainbot"),
+                ),
+                types.InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title="Start a chaos game",
+                    description="/startchaos@on9wordchainbot",
+                    input_message_content=types.InputTextMessageContent("/startchaos@on9wordchainbot"),
+                ),
+                types.InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title="Start a chosen first letter game",
+                    description="/startcfl@on9wordchainbot",
+                    input_message_content=types.InputTextMessageContent("/startcfl@on9wordchainbot"),
+                ),
+                types.InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title="Start a banned letters game",
+                    description="/startbl@on9wordchainbot",
+                    input_message_content=types.InputTextMessageContent("/startbl@on9wordchainbot"),
+                ),
+                types.InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title="Start a required letter game",
+                    description="/startrl@on9wordchainbot",
+                    input_message_content=types.InputTextMessageContent("/startrl@on9wordchainbot"),
+                ),
+                types.InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title="Start an elimination game",
+                    description="/startelim@on9wordchainbot",
+                    input_message_content=types.InputTextMessageContent("/startelim@on9wordchainbot"),
+                ),
+            ],
+            is_personal=not text,
+        )
         return
+
     if any(c not in ascii_lowercase for c in text):
-        await inline_query.answer([types.InlineQueryResultArticle(
-            id=str(uuid4()), title="A query may only consist of alphabets", description="Try a different query",
-            input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯")
-        )], is_personal=True)
+        await inline_query.answer(
+            [
+                types.InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title="A query can only consist of alphabets",
+                    description="Try a different query",
+                    input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯"),
+                )
+            ],
+            is_personal=True,
+        )
         return
+
     res = []
-    for i in get_words_li()[text[0]]:
+    for i in filter_words(starting_letter=text[0]):
         if i.startswith(text):
             i = i.capitalize()
-            res.append(types.InlineQueryResultArticle(id=str(uuid4()), title=i,
-                                                      input_message_content=types.InputTextMessageContent(i)))
-            if len(res) == 50:
+            res.append(
+                types.InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title=i,
+                    input_message_content=types.InputTextMessageContent(i),
+                )
+            )
+            if len(res) == 50:  # Max 50 results
                 break
-    if not res:
-        res.append(types.InlineQueryResultArticle(
-            id=str(uuid4()), title="No results found", description="Try a different query",
-            input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯")
-        ))
+    if not res:  # No results
+        res.append(
+            types.InlineQueryResultArticle(
+                id=str(uuid4()),
+                title="No results found",
+                description="Try a different query",
+                input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯"),
+            )
+        )
     await inline_query.answer(res, is_personal=True)
 
 
@@ -1015,30 +1237,47 @@ async def callback_query_handler(callback_query: types.CallbackQuery) -> None:
 
 @dp.errors_handler(exception=Exception)
 async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
-    for game in GAMES.values():
+    for game in GAMES.values():  # TODO: Do this for group in which error occurs only
         asyncio.create_task(game.scan_for_stale_timer())
+
     if isinstance(error, MigrateToChat):
-        if update.message.chat.id in GAMES:
+        if update.message.chat.id in GAMES:  # TODO: Test
+            old_gid = GAMES[update.message.chat.id].group_id
             GAMES[error.migrate_to_chat_id] = GAMES.pop(update.message.chat.id)
             GAMES[error.migrate_to_chat_id].group_id = error.migrate_to_chat_id
+            asyncio.create_task(
+                send_admin_group(f"Game moved from {old_gid} to {error.migrate_to_chat_id}.")
+            )
         async with pool.acquire() as conn:
-            await conn.execute("UPDATE game SET group_id = $1 WHERE group_id = $2;\n"
-                               "UPDATE gameplayer SET group_id = $1 WHERE group_id = $2;\n"
-                               "DELETE FROM game WHERE group_id = $2;\n"
-                               "DELETE FROM gameplayer WHERE group_id = $2;",
-                               error.migrate_to_chat_id, update.message.chat.id)
+            await conn.execute(
+                """\
+                UPDATE game SET group_id = $1 WHERE group_id = $2;
+                UPDATE gameplayer SET group_id = $1 WHERE group_id = $2;
+                DELETE FROM game WHERE group_id = $2;
+                DELETE FROM gameplayer WHERE group_id = $2;""",
+                error.migrate_to_chat_id,
+                update.message.chat.id,
+            )
+        await send_admin_group(f"Group migrated to {error.migrate_to_chat_id}.")
         return
-    await bot.send_message(ADMIN_GROUP_ID,
-                           f"`{error.__class__.__name__} @ "
-                           f"{update.message.chat.id if update.message and update.message.chat else 'idk'}`:\n"
-                           f"`{str(error)}`")
+
+    send_admin_msg = await send_admin_group(
+        f"`{error.__class__.__name__} @ "
+        f"{update.message.chat.id if update.message and update.message.chat else 'idk'}`:\n"
+        f"`{str(error)}`",
+    )
     if not update.message or not update.message.chat:
         return
+
     try:
         await update.message.reply("Error occurred. My owner has been notified.")
     except TelegramAPIError:
         pass
+
     if update.message.chat.id in GAMES:
+        asyncio.create_task(
+            send_admin_msg.reply(f"Killing game in {update.message.chat.id} consequently.")
+        )
         GAMES[update.message.chat.id].state = GameState.KILLGAME
         await asyncio.sleep(2)
         try:

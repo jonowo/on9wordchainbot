@@ -1,41 +1,47 @@
 import asyncio
 import random
 from datetime import datetime
-from functools import lru_cache
 from string import ascii_lowercase
-from typing import Optional, Any
+from typing import Any, Optional
 
 from aiogram import types
 from aiogram.utils.exceptions import BadRequest
 from aiogram.utils.markdown import quote_html
 
-from constants import (bot, on9bot, ON9BOT_ID, VIP, GAMES, pool, GameState, GameSettings, get_words, get_words_li,
-                       amt_donated)
+from constants import GAMES, ON9BOT_ID, GameSettings, GameState, bot, on9bot, pool
+from utils import get_random_word, send_admin_group, check_word_existence, has_star
 
 
 class Player:
-    def __init__(self, user: Optional[types.User] = None, vp: bool = False, donor=False) -> None:
-        if vp:  # VP - On9Bot
+    def __init__(self, user: Optional[types.User] = None, vp: bool = False) -> None:
+        if vp:  # VP: On9Bot
             self.user_id = ON9BOT_ID
             self.name = "<a href='https://t.me/On9Bot'>On9Bot \u2b50\ufe0f</a>"
             self.mention = f"<a href='tg://user?id={ON9BOT_ID}'>On9Bot \u2b50\ufe0f</a>"
+            self.is_vp = True
         else:
             self.user_id = user.id
-            if donor:
-                if user.username:
-                    self.name = f"<a href='https://t.me/{user.username}'>{quote_html(user.full_name)} \u2b50\ufe0f</a>"
-                else:
-                    self.name = f"<b>{quote_html(user.full_name)} \u2b50\ufe0f</b>"
-                self.mention = user.get_mention(name=user.full_name + " \u2b50\ufe0f", as_html=True)
+            if user.username:
+                self.name = f"<a href='https://t.me/{user.username}'>{quote_html(user.full_name)}</a>"
             else:
-                if user.username:
-                    self.name = f"<a href='https://t.me/{user.username}'>{quote_html(user.full_name)}</a>"
-                else:
-                    self.name = f"<b>{quote_html(user.full_name)}</b>"
-                self.mention = user.get_mention(as_html=True)
+                self.name = f"<b>{quote_html(user.full_name)}</b>"
+            self.mention = user.get_mention(as_html=True)
+            self.is_vp = False
+
         self.word_count = 0
         self.letter_count = 0
         self.longest_word = ""
+
+    async def update_donor_status(self, user: types.User) -> None:
+        # When you can't use async functions in __init__
+        if not await has_star(user.id):
+            return
+
+        if user.username:
+            self.name = f"<a href='https://t.me/{user.username}'>{quote_html(user.full_name)} \u2b50\ufe0f</a>"
+        else:
+            self.name = f"<b>{quote_html(user.full_name)} \u2b50\ufe0f</b>"
+        self.mention = user.get_mention(name=user.full_name + " \u2b50\ufe0f", as_html=True)
 
 
 class ClassicGame:
@@ -53,7 +59,7 @@ class ClassicGame:
         self.min_letters_limit = GameSettings.MIN_WORD_LENGTH_LIMIT
         self.current_word = None
         self.longest_word = ""
-        self.longest_word_sender_id = None
+        self.longest_word_sender_id = None  # TODO: Change to PLayer object instead of id
         self.answered = False
         self.accepting_answers = False
         self.turns = 0
@@ -64,9 +70,10 @@ class ClassicGame:
     async def send_message(self, *args: Any, **kwargs: Any) -> types.Message:
         return await bot.send_message(self.group_id, *args, disable_web_page_preview=True, **kwargs)
 
-    @lru_cache(maxsize=5)
+    # TODO: Use async_lru
     async def is_admin(self, user_id: int) -> bool:
-        return (await bot.get_chat_member(self.group_id, user_id)).is_chat_admin()
+        user = await bot.get_chat_member(self.group_id, user_id)
+        return user.is_chat_admin()
 
     async def join(self, message: types.Message) -> None:
         if self.state != GameState.JOINING or len(self.players) >= self.max_players:
@@ -77,53 +84,84 @@ class ClassicGame:
             await self.scan_for_stale_timer()
             return
 
+        # Check if user already joined
         user = message.from_user
         for p in self.players:
             if p.user_id == user.id:
                 return
-        player = Player(user, donor=user.id in VIP or bool(await amt_donated(user.id)))
+
+        player = Player(user)
+        await player.update_donor_status(user)
         self.players.append(player)
-        await message.reply(f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
-                            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
+
+        await self.send_message(
+            f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
+            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+            parse_mode=types.ParseMode.HTML,
+        )
+
+        # Start game when max players reached
         if len(self.players) >= self.max_players:
             self.time_left = -99999
 
     async def forcejoin(self, message: types.Message) -> None:
         if self.state == GameState.KILLGAME or len(self.players) >= self.max_players:
             return
-        rmsg = message.reply_to_message
-        user = message.reply_to_message.from_user if rmsg else message.from_user
+
+        if message.reply_to_message:
+            user = message.reply_to_message.from_user
+        else:
+            user = message.from_user
+
+        # Check if user already joined
         for p in self.players:
             if p.user_id == user.id:
                 return
-        player = Player(user, donor=user.id in VIP or bool(await amt_donated(user.id)))
+
+        if user.id == ON9BOT_ID:
+            player = Player(vp=True)
+        else:
+            player = Player(user)
+            await player.update_donor_status(user)
         self.players.append(player)
         if self.state == GameState.RUNNING:
             self.players_in_game.append(player)
-        await message.reply(f"{player.name} has been joined. There {'is' if len(self.players) == 1 else 'are'} "
-                            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
+
+        await self.send_message(
+            f"{player.name} has been joined. There {'is' if len(self.players) == 1 else 'are'} "
+            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+            parse_mode=types.ParseMode.HTML,
+        )
+
+        # Start game when max players reached
         if len(self.players) >= self.max_players:
             self.time_left = -99999
 
     async def flee(self, message: types.Message) -> None:
-        user_id = message.from_user.id
         if self.state != GameState.JOINING:
             return
+
+        # Find player to remove
+        user_id = message.from_user.id
         for i in range(len(self.players)):
             if self.players[i].user_id == user_id:
                 player = self.players.pop(i)
                 break
         else:
             return
-        await message.reply(f"{player.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
-                            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
+
+        await self.send_message(
+            f"{player.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
+            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+            parse_mode=types.ParseMode.HTML,
+        )
 
     async def forceflee(self, message: types.Message) -> None:
+        # Player to be fled = Sender of replies message
         if self.state != GameState.JOINING or not message.reply_to_message:
             return
+
+        # Find player to remove
         user_id = message.reply_to_message.from_user.id
         for i in range(len(self.players)):
             if self.players[i].user_id == user_id:
@@ -131,260 +169,385 @@ class ClassicGame:
                 break
         else:
             return
-        await message.reply(
-            f"{player.name} has been fled. There {'is' if len(self.players) == 1 else 'are'} {len(self.players)} "
-            f"player{'' if len(self.players) == 1 else 's'}.",
-            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False
+
+        await self.send_message(
+            f"{player.name} has been fled. There {'is' if len(self.players) == 1 else 'are'} "
+            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+            parse_mode=types.ParseMode.HTML,
         )
 
     async def extend(self, message: types.Message) -> None:
         if self.state != GameState.JOINING:
             return
+
         arg = message.text.partition(" ")[2]
-        if arg and arg[0] == "-" and arg[1:] != "0" and arg[1:].isdecimal() and self.is_admin(message.from_user.id):
-            n = int(arg[1:])
+
+        # Check if arg is a valid negative integer
+        try:
+            n = int(arg)
+            is_neg = n < 0
+            n = abs(n)
+        except ValueError:
+            n = 30
+            is_neg = False
+
+        if is_neg:
+            # Reduce joining phase time (admins only)
+            if not await self.is_admin(message.from_user.id):
+                await self.send_message("Imagine not being admin")
+                return
+
             if n >= self.time_left:
+                # Start game immediately
                 self.time_left = -99999
             else:
-                self.time_left = self.time_left - n
-                await message.reply(f"The joining phase has been reduced by {n}s.\n"
-                                    f"You have {self.time_left}s to /join.", reply=False)
+                self.time_left -= n
+                await self.send_message(
+                    f"The joining phase has been reduced by {n}s.\n" f"You have {self.time_left}s to /join."
+                )
         else:
-            n = int(arg) if arg.isdecimal() and int(arg) else 30
-            self.time_left = min(self.time_left + n, GameSettings.MAX_JOINING_PHASE_SECONDS)
-            await message.reply(f"The joining phase has been extended by "
-                                f"{min(n, GameSettings.MAX_JOINING_PHASE_SECONDS)}s.\n"
-                                f"You have {self.time_left}s to /join.", reply=False)
+            # Extend joining phase time
+            # Max joining phase duration is capped
+            added_duration = min(n, GameSettings.MAX_JOINING_PHASE_SECONDS - self.time_left)
+            self.time_left += added_duration
+            await self.send_message(
+                f"The joining phase has been extended by {added_duration}s.\n" f"You have {self.time_left}s to /join."
+            )
 
-    async def addvp(self, message: types.Message) -> None:
+    async def addvp(self) -> None:
         try:
             vp = await bot.get_chat_member(self.group_id, ON9BOT_ID)
+            # VP must be chat member
             assert vp.is_chat_member() or vp.is_chat_admin()
         except (BadRequest, AssertionError):
-            await self.send_message(f"You have to add [On9Bot](tg://user?id={ON9BOT_ID}) "
-                                    "into this group before using /addvp.",
-                                    reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
-                                        types.InlineKeyboardButton("Add On9Bot to this group!",
-                                                                   url="https://t.me/On9Bot?startgroup=_")
-                                    ]]))
+            await self.send_message(
+                f"Add [On9Bot](tg://user?id={ON9BOT_ID}) here to play as a virtual player.",
+                reply_markup=types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            types.InlineKeyboardButton(
+                                "Add On9Bot",
+                                url="https://t.me/On9Bot?startgroup=_",
+                            )
+                        ]
+                    ]
+                ),
+            )
             return
+
         if self.state != GameState.JOINING or len(self.players) >= self.max_players:
             return
+
+        # Check if On9Bot already joined
         for p in self.players:
-            if p.user_id == ON9BOT_ID:
+            if p.is_vp:
                 return
+
         vp = Player(vp=True)
         self.players.append(vp)
-        await on9bot.send_message(self.group_id, "/join")
-        await message.reply(f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
-                            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
+
+        await on9bot.send_message(self.group_id, "/join@" + (await bot.me).username)
+        await self.send_message(
+            (
+                f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
+                f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}."
+            ),
+            parse_mode=types.ParseMode.HTML,
+        )
+
+        # Start game when max players reached
         if len(self.players) >= self.max_players:
             self.time_left = -99999
 
-    async def remvp(self, message: types.Message) -> None:
+    async def remvp(self) -> None:
         if self.state != GameState.JOINING:
             return
+
+        # Check if On9Bot has joined
         for i in range(len(self.players)):
-            if self.players[i].user_id == ON9BOT_ID:
+            if self.players[i].is_vp:
                 vp = self.players.pop(i)
                 break
         else:
             return
-        await on9bot.send_message(self.group_id, "/flee")
-        await message.reply(f"{vp.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
-                            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                            parse_mode=types.ParseMode.HTML, disable_web_page_preview=True, reply=False)
+
+        await on9bot.send_message(self.group_id, "/flee@" + (await bot.me).username)
+        await self.send_message(
+            (
+                f"{vp.name} fled. There {'is' if len(self.players) == 1 else 'are'} "
+                f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}."
+            ),
+            parse_mode=types.ParseMode.HTML,
+        )
 
     async def send_turn_message(self) -> None:
         await self.send_message(
-            f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
-            f"Your word must start with <i>{self.current_word[-1].upper()}</i> and "
-            f"include <b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
-            f"You have <b>{self.time_limit}s</b> to answer.\n"
-            f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}",
-            parse_mode=types.ParseMode.HTML
+            (
+                f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
+                f"Your word must start with <i>{self.current_word[-1].upper()}</i> and "
+                f"include <b>at least {self.min_letters_limit} letters</b>.\n"
+                f"You have <b>{self.time_limit}s</b> to answer.\n"
+                f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
+                f"Total words: {self.turns}"
+            ),
+            parse_mode=types.ParseMode.HTML,
         )
+
+        # Reset per-turn attributes
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
-        if self.players_in_game[0].user_id != ON9BOT_ID:
-            return
-        li = get_words_li()[self.current_word[-1]][:]
-        random.shuffle(li)
-        for word in li:
-            if len(word) >= self.min_letters_limit and word not in self.used_words:
-                await on9bot.send_message(self.group_id, word.capitalize())
-                self.used_words.add(word)
-                self.turns += 1
-                self.current_word = word
-                self.players_in_game[0].word_count += 1
-                self.players_in_game[0].letter_count += len(word)
-                if len(word) > len(self.longest_word):
-                    self.longest_word = word
-                    self.longest_word_sender_id = ON9BOT_ID
-                self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-                text = f"_{word.capitalize()}_ is accepted.\n\n"
-                if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
-                    if self.time_limit > GameSettings.MIN_TURN_SECONDS:
-                        self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
-                        text += (f"Time limit decreased from "
-                                 f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
-                                 f"*{self.time_limit}s*.\n")
-                    if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
-                        self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
-                        text += (
-                            f"Minimum letters per word increased from "
-                            f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
-                            f"to *{self.min_letters_limit}*.\n"
-                        )
-                self.answered = True
-                self.accepting_answers = False
-                await self.send_message(text.rstrip())
-                break
-        else:
+
+        if self.players_in_game[0].is_vp:
+            await self.vp_answer()
+
+    def get_random_valid_answer(self) -> Optional[str]:
+        return get_random_word(
+            min_len=self.min_letters_limit,
+            starting_letter=self.current_word[-1],
+            exclude_words=self.used_words,
+        )
+
+    async def vp_answer(self) -> None:
+        # Wait before answering to prevent exceeding 20 msg/min message limit
+        # Also simulate thinking/input time like human players, wowzers
+        await asyncio.sleep(random.uniform(2, 5))
+
+        word = self.get_random_valid_answer()
+
+        if not word:  # No valid words to choose from
             await on9bot.send_message(self.group_id, "/forceskip bey")
             self.time_left = 0
+            return
+
+        await on9bot.send_message(self.group_id, word.capitalize())
+
+        self.post_turn_processing(word)
+        await self.send_post_turn_message(word)
+
+    async def additional_answer_checkers(self, word: str, message: types.Message) -> bool:
+        # To be overridden by other game modes
+        # True/False: valid/invalid answer
+        return True
 
     async def handle_answer(self, message: types.Message) -> None:
         word = message.text.lower()
+
+        # Check if answer is invalid
         if not word.startswith(self.current_word[-1]):
             await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.")
             return
-        if len(word) < self.min_letters_limit:
-            await message.reply(f"_{word.capitalize()}_ has less than {self.min_letters_limit} letters.")
-            return
+        if not isinstance(self, EliminationGame):  # No minimum letters limit for elimination game modes
+            if len(word) < self.min_letters_limit:
+                await message.reply(f"_{word.capitalize()}_ has less than {self.min_letters_limit} letters.")
+                return
         if word in self.used_words:
             await message.reply(f"_{word.capitalize()}_ has been used.")
             return
-        if word not in get_words()[word[0]]:
+        if not check_word_existence(word):
             await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
             return
+        if not await self.additional_answer_checkers(word, message):
+            return
+
+        self.post_turn_processing(word)
+        await self.send_post_turn_message(word)
+
+    def post_turn_processing(self, word: str) -> None:
+        # Update attributes
         self.used_words.add(word)
         self.turns += 1
-        self.current_word = word
+
+        # self.current_word is constant for ChosenFirstLetterGame
+        if not isinstance(self, ChosenFirstLetterGame):
+            self.current_word = word
+
         self.players_in_game[0].word_count += 1
         self.players_in_game[0].letter_count += len(word)
         if len(word) > len(self.longest_word):
             self.longest_word = word
-            self.longest_word_sender_id = message.from_user.id
-        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-        text = f"_{word.capitalize()}_ is accepted.\n\n"
-        if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
-            if self.time_limit > GameSettings.MIN_TURN_SECONDS:
-                self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
-                text += (f"Time limit decreased from "
-                         f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
-                         f"*{self.time_limit}s*.\n")
-            if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
-                self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
-                text += (f"Minimum letters per word increased from "
-                         f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
-                         f"to *{self.min_letters_limit}*.\n")
+            self.longest_word_sender_id = self.players_in_game[0].user_id
+        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=len)
+
+        # Set per-turn attributes
         self.answered = True
         self.accepting_answers = False
+
+    async def send_post_turn_message(self, word: str) -> None:
+        text = f"_{word.capitalize()}_ is accepted.\n\n"
+        # Reduce limits if possible every set number of turns
+        if self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE == 0:
+            if self.time_limit > GameSettings.MIN_TURN_SECONDS:
+                self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
+                text += (
+                    f"Time limit decreased from "
+                    f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* "
+                    f"to *{self.time_limit}s*.\n"
+                )
+            if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
+                self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
+                text += (
+                    f"Minimum letters per word increased from "
+                    f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
+                    f"to *{self.min_letters_limit}*.\n"
+                )
         await self.send_message(text.rstrip())
 
     async def running_initialization(self) -> None:
-        self.current_word = random.choice(get_words_li()[random.choice(ascii_lowercase)])
-        while len(self.current_word) < self.min_letters_limit:
-            self.current_word = random.choice(get_words_li()[random.choice(ascii_lowercase)])
+        # Random starting word
+        self.current_word = get_random_word(min_len=self.min_letters_limit)
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
-                                parse_mode=types.ParseMode.HTML)
 
-    async def running_phase(self) -> Optional[bool]:
+        await self.send_message(
+            f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+            "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+            parse_mode=types.ParseMode.HTML,
+        )
+
+    async def running_phase_tick(self) -> bool:
+        # Return values
+        # True: Game has ended
+        # False: Game is still ongoing
         if self.answered:
+            # Move player who just answered to the end of queue
             self.players_in_game.append(self.players_in_game.pop(0))
         else:
             self.time_left -= 1
             if self.time_left > 0:
-                return
+                return False
+
+            # Timer ran out
             self.accepting_answers = False
-            await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!",
-                                    parse_mode=types.ParseMode.HTML)
+            await self.send_message(
+                f"{self.players_in_game[0].mention} ran out of time! They have been eliminated.",
+                parse_mode=types.ParseMode.HTML,
+            )
             del self.players_in_game[0]
+
             if len(self.players_in_game) == 1:
-                self.end_time = datetime.now().replace(microsecond=0)
-                td = self.end_time - self.start_time
-                await self.send_message(
-                    f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
-                    f"Total words: {self.turns}"
-                    + (f"\nLongest word: <i>{self.longest_word.capitalize()}</i> from "
-                       f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
-                       if self.longest_word else "")
-                    + f"\nGame length: <code>{int(td.total_seconds()) // 3600:02}{str(td)[-6:]}</code>",
-                    parse_mode=types.ParseMode.HTML
-                )
-                del GAMES[self.group_id]
+                await self.handle_game_end()
                 return True
+
         await self.send_turn_message()
+        return False
+
+    async def handle_game_end(self) -> None:
+        # Calculate game length
+        self.end_time = datetime.now().replace(microsecond=0)
+        td = self.end_time - self.start_time
+        game_len_str = f"{int(td.total_seconds()) // 3600:02}{str(td)[-6:]}"
+
+        winner = self.players_in_game[0].mention if self.players_in_game else "No one"
+        text = f"{winner} won the game out of {len(self.players)} players!\n"
+        text += f"Total words: {self.turns}\n"
+        if self.longest_word:
+            longest_word_sender_name = [p for p in self.players if p.user_id == self.longest_word_sender_id][0].name
+            text += f"Longest word: <i>{self.longest_word.capitalize()}</i> from {longest_word_sender_name}\n"
+        text += f"Game length: <code>{game_len_str}</code>"
+        await self.send_message(text, parse_mode=types.ParseMode.HTML)
+
+        del GAMES[self.group_id]
 
     async def update_db(self) -> None:
         async with pool.acquire() as conn:
-            await conn.execute("""\
-INSERT INTO game (group_id, players, game_mode, winner, start_time, end_time)
-VALUES
-    ($1, $2, $3, $4, $5, $6);""",
-                               self.group_id, len(self.players), self.__class__.__name__,
-                               self.players_in_game[0].user_id if self.players_in_game else None,
-                               self.start_time, self.end_time)
-            game_id = await conn.fetchval("SELECT id FROM game WHERE group_id = $1 AND start_time = $2",
-                                          self.group_id, self.start_time)
-            stmt = await conn.prepare("SELECT * FROM player WHERE user_id = $1")
-            for p in self.players:
-                if not await stmt.fetchval(p.user_id):
-                    await conn.execute("""\
-INSERT INTO player (user_id, game_count, win_count, word_count, letter_count, longest_word)
-VALUES
-    ($1, 1, $2, $3, $4, $5::TEXT)""",
-                                       p.user_id, int(p in self.players_in_game), p.word_count, p.letter_count,
-                                       p.longest_word or None)
-                else:
-                    await conn.execute("""\
-UPDATE player
-SET game_count = game_count + 1,
-    win_count = win_count + $1,
-    word_count = word_count + $2,
-    letter_count = letter_count + $3,
-    longest_word = CASE WHEN longest_word IS NULL THEN $4::TEXT
-                        WHEN $4::TEXT IS NULL THEN longest_word
-                        WHEN LENGTH($4::TEXT) > LENGTH(longest_word) THEN $4::TEXT
-                        ELSE longest_word
-                   END
-WHERE user_id = $5;""",
-                                       int(p in self.players_in_game),
-                                       p.word_count, p.letter_count, p.longest_word or None, p.user_id)
-                await conn.execute("""\
-INSERT INTO gameplayer (user_id, group_id, game_id, won, word_count, letter_count, longest_word)
-VALUES
-    ($1, $2, $3, $4, $5, $6, $7);""",
-                                   p.user_id, self.group_id, game_id, p in self.players_in_game,
-                                   p.word_count, p.letter_count, p.longest_word or None)
+            # Insert game instance
+            await conn.execute(
+                """\
+                INSERT INTO game (group_id, players, game_mode, winner, start_time, end_time)
+                    VALUES ($1, $2, $3, $4, $5, $6);""",
+                self.group_id,
+                len(self.players),
+                self.__class__.__name__,
+                self.players_in_game[0].user_id if self.players_in_game else None,
+                self.start_time,
+                self.end_time,
+            )
+            # Get game id
+            game_id = await conn.fetchval(
+                "SELECT id FROM game WHERE group_id = $1 AND start_time = $2;",
+                self.group_id,
+                self.start_time,
+            )
+        for player in self.players:  # Update db players in parallel
+            asyncio.create_task(self.update_db_player(game_id, player))
 
-    async def scan_for_stale_timer(self):
-        # Prevent games being stuck in groups.
+    async def update_db_player(self, game_id: int, player: Player) -> None:
+        async with pool.acquire() as conn:
+            player_exists = bool(await conn.fetchval("SELECT id FROM player WHERE user_id = $1;", player.user_id))
+            if player_exists:  # Update player in db
+                await conn.execute(
+                    """\
+                    UPDATE player
+                    SET game_count = game_count + 1,
+                        win_count = win_count + $1,
+                        word_count = word_count + $2,
+                        letter_count = letter_count + $3,
+                        longest_word = CASE WHEN longest_word IS NULL THEN $4::TEXT
+                                            WHEN $4::TEXT IS NULL THEN longest_word
+                                            WHEN LENGTH($4::TEXT) > LENGTH(longest_word) THEN $4::TEXT
+                                            ELSE longest_word
+                                       END
+                    WHERE user_id = $5;""",
+                    int(player in self.players_in_game),  # Support no winner in some game modes
+                    player.word_count,
+                    player.letter_count,
+                    player.longest_word or None,
+                    player.user_id,
+                )
+            else:  # New player, create player in db
+                await conn.execute(
+                    """\
+                    INSERT INTO player (user_id, game_count, win_count, word_count, letter_count, longest_word)
+                        VALUES ($1, 1, $2, $3, $4, $5::TEXT);""",
+                    player.user_id,
+                    int(player in self.players_in_game),  # No winner in some game modes
+                    player.word_count,
+                    player.letter_count,
+                    player.longest_word or None,
+                )
+
+            # Create gameplayer in db
+            await conn.execute(
+                """\
+                INSERT INTO gameplayer (user_id, group_id, game_id, won, word_count, letter_count, longest_word)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7);""",
+                player.user_id,
+                self.group_id,
+                game_id,
+                player in self.players_in_game,
+                player.word_count,
+                player.letter_count,
+                player.longest_word or None,
+            )
+
+    async def scan_for_stale_timer(self) -> None:
+        # Check if game timer is stuck
         timer = self.time_left
         for _ in range(5):
             await asyncio.sleep(1)
             if timer != self.time_left and timer >= 0:
-                return
+                return  # Timer not stuck
+
+        await send_admin_group(f"Prolonged stale/negative timer detected in group `{self.group_id}`. Game Terminated.")
         try:
-            await self.send_message("Prolonged stale/negative timer. Game terminated.")
+            await self.send_message("Game timer is malfunctioning. Game terminated.")
         except:
             pass
-        GAMES.pop(self.group_id)
+
+        GAMES.pop(self.group_id, None)
 
     async def main_loop(self, message: types.Message) -> None:
-        negative_timer = 0  # Hopefully fix issue of game not ending with negative timer.
+        # Attempt to fix issue of stuck game with negative timer.
+        negative_timer = 0
         try:
-            await self.send_message(f"A{'n' if self.name[0] in 'aeiou' else ''} {self.name} is starting.\n"
-                                    f"{self.min_players}-{self.max_players} players are needed.\n"
-                                    f"{self.time_left}s to /join.")
+            await self.send_message(
+                f"A{'n' if self.name[0] in 'aeiou' else ''} {self.name} is starting.\n"
+                f"{self.min_players}-{self.max_players} players are needed.\n"
+                f"{self.time_left}s to /join."
+            )
             await self.join(message)
+
             while True:
                 await asyncio.sleep(1)
                 if self.state == GameState.JOINING:
@@ -400,16 +563,20 @@ VALUES
                         else:
                             self.state = GameState.RUNNING
                             await self.send_message("Game is starting...")
+
                             random.shuffle(self.players)
                             self.players_in_game = self.players[:]
+
                             await self.running_initialization()
                             await self.send_turn_message()
                 elif self.state == GameState.RUNNING:
+                    # Check for prolonged negative timer
                     if self.time_left < 0:
                         negative_timer += 1
                     if negative_timer >= 5:
                         raise ValueError("Prolonged negative timer.")
-                    if await self.running_phase():
+
+                    if await self.running_phase_tick():  # True: Game ended
                         await self.update_db()
                         return
                 elif self.state == GameState.KILLGAME:
@@ -419,7 +586,10 @@ VALUES
         except Exception as e:
             GAMES.pop(self.group_id, None)
             try:
-                await self.send_message(f"Game ended due to {e.__class__.__name__}: {e}.\nMy owner will be notified.")
+                await self.send_message(
+                    f"Game ended due to the following error:\n`{e.__class__.__name__}: {e}`.\n"
+                    "My owner will be notified."
+                )
             except:
                 pass
             raise
@@ -430,6 +600,7 @@ class HardModeGame(ClassicGame):
 
     def __init__(self, group_id: int) -> None:
         super().__init__(group_id)
+        # Hardest settings available
         self.time_limit = GameSettings.MIN_TURN_SECONDS
         self.min_letters_limit = GameSettings.MAX_WORD_LENGTH_LIMIT
 
@@ -439,90 +610,65 @@ class ChaosGame(ClassicGame):
 
     async def send_turn_message(self) -> None:
         await self.send_message(
-            f"Turn: {self.players_in_game[0].mention}\n"
-            f"Your word must start with <i>{self.current_word[-1].upper()}</i> and "
-            f"contain <b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
-            f"You have <b>{self.time_limit}s</b> to answer.\n"
-            f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}",
-            parse_mode=types.ParseMode.HTML
+            (
+                f"Turn: {self.players_in_game[0].mention}\n"
+                f"Your word must start with <i>{self.current_word[-1].upper()}</i> and "
+                f"contain <b>at least {self.min_letters_limit} letters</b>.\n"
+                f"You have <b>{self.time_limit}s</b> to answer.\n"
+                f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
+                f"Total words: {self.turns}"
+            ),
+            parse_mode=types.ParseMode.HTML,
         )
+
+        # Reset per-turn attributes
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
-        if self.players_in_game[0].user_id != ON9BOT_ID:
-            return
-        li = get_words_li()[self.current_word[-1]][:]
-        random.shuffle(li)
-        for word in li:
-            if len(word) >= self.min_letters_limit and word not in self.used_words:
-                await on9bot.send_message(self.group_id, word.capitalize())
-                self.used_words.add(word)
-                self.turns += 1
-                self.current_word = word
-                self.players_in_game[0].word_count += 1
-                self.players_in_game[0].letter_count += len(word)
-                if len(word) > len(self.longest_word):
-                    self.longest_word = word
-                    self.longest_word_sender_id = ON9BOT_ID
-                text = f"_{word.capitalize()}_ is accepted.\n\n"
-                if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
-                    if self.time_limit > GameSettings.MIN_TURN_SECONDS:
-                        self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
-                        text += (f"Time limit decreased from "
-                                 f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
-                                 f"*{self.time_limit}s*.\n")
-                    if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
-                        self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
-                        text += (
-                            f"Minimum letters per word increased from "
-                            f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
-                            f"to *{self.min_letters_limit}*.\n"
-                        )
-                self.answered = True
-                self.accepting_answers = False
-                await self.send_message(text.rstrip())
-                break
-        else:
-            await on9bot.send_message(self.group_id, "/forceskip bey")
-            self.time_left = 0
+
+        if self.players_in_game[0].is_vp:
+            await self.vp_answer()
 
     async def running_initialization(self) -> None:
-        self.current_word = random.choice(get_words_li()[random.choice(ascii_lowercase)])
-        while len(self.current_word) < self.min_letters_limit:
-            self.current_word = random.choice(get_words_li()[random.choice(ascii_lowercase)])
+        # Random starting word
+        self.current_word = get_random_word(min_len=self.min_letters_limit)
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
+
+        # No turn order
         await self.send_message(f"The first word is _{self.current_word.capitalize()}_.")
 
-    async def running_phase(self) -> Optional[bool]:
+    async def running_phase_tick(self) -> Optional[bool]:
         if self.answered:
+            # Move player who just answered to the end of queue
             self.players_in_game.append(self.players_in_game.pop(0))
-            self.players_in_game.insert(0, self.players_in_game.pop(random.randint(0, len(self.players_in_game) - 2)))
+
+            # Choose random player excluding the one who just answered and move to the start of queue
+            player = self.players_in_game.pop(random.randint(0, len(self.players_in_game) - 2))
+            self.players_in_game.insert(0, player)
         else:
             self.time_left -= 1
             if self.time_left > 0:
                 return
+
+            # Timer ran out
             self.accepting_answers = False
-            await self.send_message(f"{self.players_in_game[0].mention} ran out of time! Out!",
-                                    parse_mode=types.ParseMode.HTML)
+            await self.send_message(
+                f"{self.players_in_game[0].mention} ran out of time! They have been eliminated.",
+                parse_mode=types.ParseMode.HTML,
+            )
             del self.players_in_game[0]
+
             if len(self.players_in_game) == 1:
-                self.end_time = datetime.now().replace(microsecond=0)
-                td = self.end_time - self.start_time
-                await self.send_message(
-                    f"{self.players_in_game[0].mention} won the game out of {len(self.players)} players!\n"
-                    f"Total words: {self.turns}"
-                    + (f"\nLongest word: <i>{self.longest_word.capitalize()}</i> from "
-                       f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
-                       if self.longest_word else "")
-                    + f"\nGame length: <code>{int(td.total_seconds()) // 3600:02}{str(td)[-6:]}</code>",
-                    parse_mode=types.ParseMode.HTML
-                )
-                del GAMES[self.group_id]
-                return True
-            self.players_in_game.insert(0, self.players_in_game.pop(random.randint(0, len(self.players_in_game) - 2)))
+                await self.handle_game_end()
+                return True  # Game has ended
+
+            # Choose random player and move to the start of queue
+            player = self.players_in_game.pop(random.randint(0, len(self.players_in_game) - 1))
+            self.players_in_game.insert(0, player)
+
         await self.send_turn_message()
+        return False  # Game is still ongoing
 
 
 class ChosenFirstLetterGame(ClassicGame):
@@ -530,98 +676,37 @@ class ChosenFirstLetterGame(ClassicGame):
 
     async def send_turn_message(self) -> None:
         await self.send_message(
-            f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
-            f"Your word must start with <i>{self.current_word.upper()}</i> and "
-            f"contain <b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
-            f"You have <b>{self.time_limit}s</b> to answer.\n"
-            f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}",
-            parse_mode=types.ParseMode.HTML
+            (
+                f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
+                f"Your word must start with <i>{self.current_word.upper()}</i> and "
+                f"contain <b>at least {self.min_letters_limit} letters</b>.\n"
+                f"You have <b>{self.time_limit}s</b> to answer.\n"
+                f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
+                f"Total words: {self.turns}"
+            ),
+            parse_mode=types.ParseMode.HTML,
         )
+
+        # Reset per-turn attributes
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
-        if self.players_in_game[0].user_id != ON9BOT_ID:
-            return
-        li = get_words_li()[self.current_word][:]
-        random.shuffle(li)
-        for word in li:
-            if len(word) >= self.min_letters_limit and word not in self.used_words:
-                await on9bot.send_message(self.group_id, word.capitalize())
-                self.used_words.add(word)
-                self.turns += 1
-                self.players_in_game[0].word_count += 1
-                self.players_in_game[0].letter_count += len(word)
-                if len(word) > len(self.longest_word):
-                    self.longest_word = word
-                    self.longest_word_sender_id = ON9BOT_ID
-                self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-                text = f"_{word.capitalize()}_ is accepted.\n\n"
-                if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
-                    if self.time_limit > GameSettings.MIN_TURN_SECONDS:
-                        self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
-                        text += (f"Time limit decreased from "
-                                 f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
-                                 f"*{self.time_limit}s*.\n")
-                    if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
-                        self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
-                        text += (
-                            f"Minimum letters per word increased from "
-                            f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
-                            f"to *{self.min_letters_limit}*.\n"
-                        )
-                self.answered = True
-                self.accepting_answers = False
-                await self.send_message(text.rstrip())
-                break
-        else:
-            await on9bot.send_message(self.group_id, "/forceskip bey")
-            self.time_left = 0
 
-    async def handle_answer(self, message: types.Message) -> None:
-        word = message.text.lower()
-        if word[0] != self.current_word:
-            await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word.upper()}_.")
-            return
-        if len(word) < self.min_letters_limit:
-            await message.reply(f"_{word.capitalize()}_ has less than {self.min_letters_limit} letters.")
-            return
-        if word in self.used_words:
-            await message.reply(f"_{word.capitalize()}_ has been used.")
-            return
-        if word not in get_words()[word[0]]:
-            await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
-            return
-        self.used_words.add(word)
-        self.turns += 1
-        self.players_in_game[0].word_count += 1
-        self.players_in_game[0].letter_count += len(word)
-        if len(word) > len(self.longest_word):
-            self.longest_word = word
-            self.longest_word_sender_id = message.from_user.id
-        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-        text = f"_{word.capitalize()}_ is accepted.\n\n"
-        if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
-            if self.time_limit > GameSettings.MIN_TURN_SECONDS:
-                self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
-                text += (f"Time limit decreased from "
-                         f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
-                         f"*{self.time_limit}s*.\n")
-            if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
-                self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
-                text += (f"Minimum letters per word increased from "
-                         f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
-                         f"to *{self.min_letters_limit}*.\n")
-        self.answered = True
-        self.accepting_answers = False
-        await self.send_message(text.rstrip())
+        if self.players_in_game[0].is_vp:
+            # self.current_word[-1] == self.current_word, code reuse go brrr
+            await self.vp_answer()
 
     async def running_initialization(self) -> None:
+        # Instead of storing the last used word like in other game modes,
+        # self.current_word stores in the chosen first letter which is constant throughout the game
         self.current_word = random.choice(ascii_lowercase)
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The chosen first letter is <i>{self.current_word.upper()}</i>.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
-                                parse_mode=types.ParseMode.HTML)
+
+        await self.send_message(
+            f"The chosen first letter is <i>{self.current_word.upper()}</i>.\n\n"
+            "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+            parse_mode=types.ParseMode.HTML,
+        )
 
 
 class BannedLettersGame(ClassicGame):
@@ -633,120 +718,75 @@ class BannedLettersGame(ClassicGame):
 
     async def send_turn_message(self) -> None:
         await self.send_message(
-            f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
-            f"Your word must start with <i>{self.current_word[-1].upper()}</i>, "
-            f"<b>exclude</b> <i>{', '.join(c.upper() for c in self.banned_letters)}</i> and "
-            f"include <b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
-            f"You have <b>{self.time_limit}s</b> to answer.\n"
-            f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}",
-            parse_mode=types.ParseMode.HTML
+            (
+                f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
+                f"Your word must start with <i>{self.current_word[-1].upper()}</i>, "
+                f"<b>exclude</b> <i>{', '.join(c.upper() for c in self.banned_letters)}</i> and "
+                f"include <b>at least {self.min_letters_limit} "
+                f"letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
+                f"You have <b>{self.time_limit}s</b> to answer.\n"
+                f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
+                f"Total words: {self.turns}"
+            ),
+            parse_mode=types.ParseMode.HTML,
         )
+
+        # Reset per-turn attributes
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
-        if self.players_in_game[0].user_id != ON9BOT_ID:
-            return
-        li = get_words_li()[self.current_word[-1]][:]
-        random.shuffle(li)
-        for word in li:
-            if (len(word) >= self.min_letters_limit and word not in self.used_words
-                    and all([c not in word for c in self.banned_letters])):
-                await on9bot.send_message(self.group_id, word.capitalize())
-                self.used_words.add(word)
-                self.turns += 1
-                self.current_word = word
-                self.players_in_game[0].word_count += 1
-                self.players_in_game[0].letter_count += len(word)
-                if len(word) > len(self.longest_word):
-                    self.longest_word = word
-                    self.longest_word_sender_id = ON9BOT_ID
-                self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-                text = f"_{word.capitalize()}_ is accepted.\n\n"
-                if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
-                    if self.time_limit > GameSettings.MIN_TURN_SECONDS:
-                        self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
-                        text += (f"Time limit decreased from "
-                                 f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
-                                 f"*{self.time_limit}s*.\n")
-                    if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
-                        self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
-                        text += (
-                            f"Minimum letters per word increased from "
-                            f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
-                            f"to *{self.min_letters_limit}*.\n"
-                        )
-                self.answered = True
-                self.accepting_answers = False
-                await self.send_message(text.rstrip())
-                break
-        else:
-            await on9bot.send_message(self.group_id, "/forceskip bey")
-            self.time_left = 0
 
-    async def handle_answer(self, message: types.Message) -> None:
-        word = message.text.lower()
-        if not word.startswith(self.current_word[-1]):
-            await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.")
-            return
-        if any(c for c in self.banned_letters if c in word):
-            await message.reply(f"_{word.capitalize()}_ includes banned letters "
-                                f"({', '.join(c.upper() for c in self.banned_letters if c in word)}).")
-            return
-        if len(word) < self.min_letters_limit:
-            await message.reply(f"_{word.capitalize()}_ has less than {self.min_letters_limit} letters.")
-            return
-        if word in self.used_words:
-            await message.reply(f"_{word.capitalize()}_ has been used.")
-            return
-        if word not in get_words()[word[0]]:
-            await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
-            return
-        self.used_words.add(word)
-        self.turns += 1
-        self.current_word = word
-        self.players_in_game[0].word_count += 1
-        self.players_in_game[0].letter_count += len(word)
-        if len(word) > len(self.longest_word):
-            self.longest_word = word
-            self.longest_word_sender_id = message.from_user.id
-        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-        text = f"_{word.capitalize()}_ is accepted.\n\n"
-        if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
-            if self.time_limit > GameSettings.MIN_TURN_SECONDS:
-                self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
-                text += (f"Time limit decreased from "
-                         f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
-                         f"*{self.time_limit}s*.\n")
-            if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
-                self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
-                text += (f"Minimum letters per word increased from "
-                         f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
-                         f"to *{self.min_letters_limit}*.\n")
-        self.answered = True
-        self.accepting_answers = False
-        await self.send_message(text.rstrip())
+        if self.players_in_game[0].is_vp:
+            await self.vp_answer()
 
-    async def running_initialization(self) -> None:
+    def get_random_valid_answer(self) -> Optional[str]:
+        return get_random_word(
+            min_len=self.min_letters_limit,
+            starting_letter=self.current_word[-1],
+            banned_letters=self.banned_letters,
+            exclude_words=self.used_words,
+        )
+
+    async def additional_answer_checkers(self, word: str, message: types.Message) -> bool:
+        used_banned_letters = sorted(set(word) & set(self.banned_letters))
+        if used_banned_letters:
+            await message.reply(
+                f"_{word.capitalize()}_ contains banned letters "
+                f"({', '.join(c.upper() for c in used_banned_letters)})."
+            )
+            return False
+        return True
+
+    def set_banned_letters(self) -> None:
+        self.banned_letters.clear()  # Mode may occur multiple times in mixed elimination
+
+        # Set banned letters (maximum one vowel)
         alphabets = list(ascii_lowercase)
-        for i in range(random.randint(2, 4)):
+        for _ in range(random.randint(2, 4)):
             self.banned_letters.append(random.choice(alphabets))
             if self.banned_letters[-1] in "aeiou":
                 alphabets = [c for c in alphabets if c not in "aeiou"]
             else:
                 alphabets.remove(self.banned_letters[-1])
         self.banned_letters.sort()
-        unbanned = "".join([c for c in ascii_lowercase if c not in self.banned_letters])
-        self.current_word = random.choice(get_words_li()[random.choice(unbanned)])
-        while (len(self.current_word) < self.min_letters_limit
-               or any(c in self.current_word for c in self.banned_letters)):
-            self.current_word = random.choice(get_words_li()[random.choice(unbanned)])
+
+    async def running_initialization(self) -> None:
+        self.set_banned_letters()
+
+        # Random starting word
+        self.current_word = get_random_word(
+            min_len=self.min_letters_limit,
+            banned_letters=self.banned_letters,
+        )
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n"
-                                f"Banned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
-                                parse_mode=types.ParseMode.HTML)
+
+        await self.send_message(
+            f"The first word is <i>{self.current_word.capitalize()}</i>.\n"
+            f"Banned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>\n\n"
+            "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+            parse_mode=types.ParseMode.HTML,
+        )
 
 
 class RequiredLetterGame(ClassicGame):
@@ -754,115 +794,67 @@ class RequiredLetterGame(ClassicGame):
 
     def __init__(self, group_id: int) -> None:
         super().__init__(group_id)
-        self.required_letter = None
+        # Answer must contain required letter.
+        # Required letter cannot be the ending letter of self.current_word. (Otherwise, what's the point)
+        self.required_letter = None  # Changes every turn
 
     async def send_turn_message(self) -> None:
         await self.send_message(
-            f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
-            f"Your word must start with <i>{self.current_word[-1].upper()}</i>, "
-            f"<b>include</b> <i>{self.required_letter.upper()}</i> and "
-            f"<b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
-            f"You have <b>{self.time_limit}s</b> to answer.\n"
-            f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
-            f"Total words: {self.turns}",
-            parse_mode=types.ParseMode.HTML
+            (
+                f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
+                f"Your word must start with <i>{self.current_word[-1].upper()}</i>, "
+                f"<b>include</b> <i>{self.required_letter.upper()}</i> and "
+                f"<b>at least {self.min_letters_limit} letter{'' if self.min_letters_limit == 1 else 's'}</b>.\n"
+                f"You have <b>{self.time_limit}s</b> to answer.\n"
+                f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
+                f"Total words: {self.turns}"
+            ),
+            parse_mode=types.ParseMode.HTML,
         )
+
+        # Reset per-turn attributes
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
-        if self.players_in_game[0].user_id != ON9BOT_ID:
-            return
-        li = get_words_li()[self.current_word[-1]][:]
-        random.shuffle(li)
-        for word in li:
-            if (len(word) >= self.min_letters_limit and word not in self.used_words
-                    and self.required_letter in word):
-                await on9bot.send_message(self.group_id, word.capitalize())
-                self.used_words.add(word)
-                self.turns += 1
-                self.current_word = word
-                self.players_in_game[0].word_count += 1
-                self.players_in_game[0].letter_count += len(word)
-                self.required_letter = random.choice([c for c in ascii_lowercase if c != word[-1]])
-                if len(word) > len(self.longest_word):
-                    self.longest_word = word
-                    self.longest_word_sender_id = ON9BOT_ID
-                self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-                text = f"_{word.capitalize()}_ is accepted.\n\n"
-                if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
-                    if self.time_limit > GameSettings.MIN_TURN_SECONDS:
-                        self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
-                        text += (f"Time limit decreased from "
-                                 f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
-                                 f"*{self.time_limit}s*.\n")
-                    if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
-                        self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
-                        text += (
-                            f"Minimum letters per word increased from "
-                            f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
-                            f"to *{self.min_letters_limit}*.\n"
-                        )
-                self.answered = True
-                self.accepting_answers = False
-                await self.send_message(text.rstrip())
-                break
-        else:
-            await on9bot.send_message(self.group_id, "/forceskip bey")
-            self.time_left = 0
 
-    async def handle_answer(self, message: types.Message) -> None:
-        word = message.text.lower()
-        if not word.startswith(self.current_word[-1]):
-            await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.")
-            return
+        if self.players_in_game[0].is_vp:
+            await self.vp_answer()
+
+    def get_random_valid_answer(self) -> Optional[str]:
+        return get_random_word(
+            min_len=self.min_letters_limit,
+            starting_letter=self.current_word[-1],
+            required_letter=self.required_letter,
+            exclude_words=self.used_words,
+        )
+
+    async def additional_answer_checkers(self, word: str, message: types.Message) -> bool:
         if self.required_letter not in word:
             await message.reply(f"_{word.capitalize()}_ does not include _{self.required_letter}_.")
-            return
-        if len(word) < self.min_letters_limit:
-            await message.reply(f"_{word.capitalize()}_ has less than {self.min_letters_limit} letters.")
-            return
-        if word in self.used_words:
-            await message.reply(f"_{word.capitalize()}_ has been used.")
-            return
-        if word not in get_words()[word[0]]:
-            await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
-            return
-        self.used_words.add(word)
-        self.turns += 1
-        self.current_word = word
-        self.players_in_game[0].word_count += 1
-        self.players_in_game[0].letter_count += len(word)
-        self.required_letter = random.choice([c for c in ascii_lowercase if c != word[-1]])
-        if len(word) > len(self.longest_word):
-            self.longest_word = word
-            self.longest_word_sender_id = message.from_user.id
-        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-        text = f"_{word.capitalize()}_ is accepted.\n\n"
-        if not self.turns % GameSettings.TURNS_BETWEEN_LIMITS_CHANGE:
-            if self.time_limit > GameSettings.MIN_TURN_SECONDS:
-                self.time_limit -= GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE
-                text += (f"Time limit decreased from "
-                         f"*{self.time_limit + GameSettings.TURN_SECONDS_REDUCTION_PER_LIMIT_CHANGE}s* to "
-                         f"*{self.time_limit}s*.\n")
-            if self.min_letters_limit < GameSettings.MAX_WORD_LENGTH_LIMIT:
-                self.min_letters_limit += GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE
-                text += (f"Minimum letters per word increased from "
-                         f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
-                         f"to *{self.min_letters_limit}*.\n")
-        self.answered = True
-        self.accepting_answers = False
-        await self.send_message(text.rstrip())
+            return False
+        return True
+
+    def change_required_letter(self) -> None:
+        letters = list(ascii_lowercase)
+        letters.remove(self.current_word[-1])
+        self.required_letter = random.choice(letters)
+
+    def post_turn_processing(self, word: str) -> None:
+        super().post_turn_processing(word)
+        self.change_required_letter()
 
     async def running_initialization(self) -> None:
-        self.current_word = random.choice(get_words_li()[random.choice(ascii_lowercase)])
-        while len(self.current_word) < self.min_letters_limit:
-            self.current_word = random.choice(get_words_li()[random.choice(ascii_lowercase)])
+        # Random starting word
+        self.current_word = get_random_word(min_len=self.min_letters_limit)
         self.used_words.add(self.current_word)
-        self.required_letter = random.choice([c for c in ascii_lowercase if c != self.current_word[-1]])
+        self.change_required_letter()
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
-                                parse_mode=types.ParseMode.HTML)
+
+        await self.send_message(
+            f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+            "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+            parse_mode=types.ParseMode.HTML,
+        )
 
 
 class EliminationGame(ClassicGame):
@@ -874,141 +866,182 @@ class EliminationGame(ClassicGame):
         self.max_players = GameSettings.SPECIAL_GAME_MAX_PLAYERS
         self.time_left = GameSettings.SPECIAL_GAME_INITIAL_JOINING_PHASE_SECONDS
         self.time_limit = GameSettings.FIXED_TURN_SECONDS
-        self.min_letters_limit = 0
+        # No need to impose minimum letters limit
+        # Answering words with few letters will eventually lead to elimination
+        self.min_letters_limit = 1  # A word must contain at least a letter after all
         self.round = 1
         self.turns_until_elimination = 0
 
     async def forcejoin(self, message: types.Message):
+        # Joining in the middle of an elimination game puts one at a disadvantage since points are cumulative
         if self.state == GameState.JOINING:
             await super().forcejoin(message)
 
     def get_leaderboard(self, show_player: Optional[Player] = None) -> str:
+        # nightmare nightmare nightmare nightmare
+
+        # Make a copy of players in game
         players = self.players_in_game[:]
-        players.sort(key=lambda k: (k.letter_count, k.user_id), reverse=True)
+        # Sort by letter count descending then user id ascending
+        # The user id part is to ensure consistent ordering of players with same letter count
+        players.sort(key=lambda k: (-k.letter_count, k.user_id))
         text = ""
-        if show_player:
-            if len(players) <= 10:
-                for i, p in enumerate(players, start=1):
-                    t = f"{i}. {p.name}: {p.letter_count}\n"
-                    if p is show_player:
-                        t = "> " + t
-                    text += t
-            elif players.index(show_player) <= 5 or players.index(show_player) >= len(players) - 4:
-                for i, p in enumerate(players[:5], start=1):
-                    t = f"{i}. {p.name}: {p.letter_count}\n"
-                    if p is show_player:
-                        t = "> " + t
-                    text += t
-                text += "...\n"
-                for i, p in enumerate(players[-5:], start=len(players) - 4):
-                    t = f"{i}. {p.name}: {p.letter_count}\n"
-                    if p is show_player:
-                        t = "> " + t
-                    text += t
-            else:
-                for i, p in enumerate(players[:5], start=1):
-                    text += f"{i}. {p.name}: {p.letter_count}\n"
-                text += f"...\n> {players.index(show_player) + 1}. {show_player.name}: {p.letter_count}\n...\n"
-                for i, p in enumerate(players[-5:], start=len(players) - 4):
-                    text += f"{i}. {p.name}: {p.letter_count}\n"
-        else:
+
+        if not show_player:
+            # Show every player
             for i, p in enumerate(players, start=1):
                 text += f"{i}. {p.name}: {p.letter_count}\n"
-        return text[:-1]
+            return text.rstrip()
+
+        # Highlight player (while showing 10 other players at max)
+        if len(players) <= 10:
+            # Show every player
+            for i, p in enumerate(players, start=1):
+                line = f"{i}. {p.name}: {p.letter_count}\n"
+                if p is show_player:
+                    line = "> " + line
+                text += line
+        elif players.index(show_player) <= 4 or players.index(show_player) >= len(players) - 5:
+            # Player is in first or last 5 places, show those places
+            for i, p in enumerate(players[:5], start=1):
+                line = f"{i}. {p.name}: {p.letter_count}\n"
+                if p is show_player:
+                    line = "> " + line
+                text += line
+            text += "...\n"
+            for i, p in enumerate(players[-5:], start=len(players) - 4):
+                line = f"{i}. {p.name}: {p.letter_count}\n"
+                if p is show_player:
+                    line = "> " + line
+                text += line
+        else:
+            # Player not in first or last 5 places, show player in middle
+            for i, p in enumerate(players[:5], start=1):
+                text += f"{i}. {p.name}: {p.letter_count}\n"
+            # Prevent awkward ellipses if player is 6th place from top or bottom
+            if players[5] is not show_player:
+                text += "...\n"
+            text += f"> {players.index(show_player) + 1}. {show_player.name}: {show_player.letter_count}\n"
+            if players[-6] is not show_player:
+                text += "...\n"
+            for i, p in enumerate(players[-5:], start=len(players) - 4):
+                text += f"{i}. {p.name}: {p.letter_count}\n"
+        return text.rstrip()
 
     async def send_turn_message(self) -> None:
         await self.send_message(
-            (f"Turn: {self.players_in_game[0].mention} (Next: {self.players_in_game[1].name})\n"
-             if self.turns_until_elimination > 1 else f"Turn: {self.players_in_game[0].mention}\n")
-            + f"Your word must start with <i>{self.current_word[-1].upper()}</i>.\n"
-              f"You have <b>{self.time_limit}s</b> to answer.\n\n" + "Leaderboard:\n"
-            + self.get_leaderboard(show_player=self.players_in_game[0]),
-            parse_mode=types.ParseMode.HTML
+            (
+                f"Turn: {self.players_in_game[0].mention}"
+                # Do not show next player on queue if this is last turn of the round
+                # Since they could be eliminated
+                + (f" (Next: {self.players_in_game[1].name})\n" if self.turns_until_elimination > 1 else "\n")
+                + f"Your word must start with <i>{self.current_word[-1].upper()}</i>.\n"
+                  f"You have <b>{self.time_limit}s</b> to answer.\n\n"
+                  "Leaderboard:\n" + self.get_leaderboard(show_player=self.players_in_game[0])
+            ),
+            parse_mode=types.ParseMode.HTML,
         )
+
+        # Reset per-turn attributes
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
 
-    async def handle_answer(self, message: types.Message) -> None:
-        word = message.text.lower()
-        if not word.startswith(self.current_word[-1]):
-            await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.")
-            return
-        if word in self.used_words:
-            await message.reply(f"_{word.capitalize()}_ has been used.")
-            return
-        if word not in get_words()[word[0]]:
-            await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
-            return
-        self.used_words.add(word)
-        self.turns += 1
-        self.players_in_game[0].word_count += 1
-        self.players_in_game[0].letter_count += len(word)
-        self.current_word = word
-        if len(word) > len(self.longest_word):
-            self.longest_word = word
-            self.longest_word_sender_id = message.from_user.id
-        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-        self.answered = True
-        self.accepting_answers = False
+    async def send_post_turn_message(self, word: str) -> None:
         await self.send_message(f"_{word.capitalize()}_ is accepted.")
+        # No limit reduction
 
     async def running_initialization(self) -> None:
-        self.turns_until_elimination = len(self.players)
-        self.current_word = random.choice(get_words_li()[random.choice(ascii_lowercase)])
+        # Random starting word
+        self.current_word = get_random_word()
         self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
-                                parse_mode=types.ParseMode.HTML)
-        await self.send_message("Round 1 is starting...\n\nLeaderboard:\n" + self.get_leaderboard(),
-                                parse_mode=types.ParseMode.HTML)
 
-    async def running_phase(self) -> Optional[bool]:
+        await self.send_message(
+            (
+                f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game])
+            ),
+            parse_mode=types.ParseMode.HTML,
+        )
+        await self.handle_round_start()
+
+    async def running_phase_tick(self) -> bool:
         if not self.answered:
             self.time_left -= 1
             if self.time_left > 0:
-                return
+                return False
             self.accepting_answers = False
-            await self.send_message(f"{self.players_in_game[0].mention} ran out of time!",
-                                    parse_mode=types.ParseMode.HTML)
+            await self.send_message(
+                f"{self.players_in_game[0].mention} ran out of time!",
+                parse_mode=types.ParseMode.HTML,
+            )
+
+        # Regardless of answering in time or running out of time
+        # Elimination happens at the end of the round
+        # Move player who just answered to the end of queue
         self.players_in_game.append(self.players_in_game.pop(0))
         self.turns_until_elimination -= 1
-        if not self.turns_until_elimination:
-            min_score = min(p.letter_count for p in self.players_in_game)
-            eliminated = [p for p in self.players_in_game if p.letter_count == min_score]
-            await self.send_message(
-                f"Round {self.round} completed.\n\nLeaderboard:\n" + self.get_leaderboard() + "\n\n"
-                + ", ".join(p.mention for p in eliminated) + " " + ("is" if len(eliminated) == 1 else "are")
-                + f" eliminated for having the lowest score of {min_score}.",
-                parse_mode=types.ParseMode.HTML
-            )
-            self.players_in_game = [p for p in self.players_in_game if p not in eliminated]
+
+        # Handle round transition
+        if self.turns_until_elimination == 0:
+            await self.handle_round_end()
+
             if len(self.players_in_game) <= 1:
-                self.end_time = datetime.now().replace(microsecond=0)
-                td = self.end_time - self.start_time
-                await self.send_message(
-                    f"{(self.players_in_game[0].mention if self.players_in_game else 'No one')} won the game out of "
-                    f"{len(self.players)} players!\n"
-                    f"Total words: {self.turns}"
-                    + (f"\nLongest word: <i>{self.longest_word.capitalize()}</i> from "
-                       f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
-                       if self.longest_word else "")
-                    + f"\nGame length: <code>{int(td.total_seconds()) // 3600:02}{str(td)[-6:]}</code>",
-                    parse_mode=types.ParseMode.HTML
-                )
-                del GAMES[self.group_id]
+                await self.handle_game_end()
                 return True
-            self.round += 1
-            self.turns_until_elimination = len(self.players_in_game)
-            await self.send_message(f"Round {self.round} is starting...\n\nLeaderboard:\n" + self.get_leaderboard(),
-                                    parse_mode=types.ParseMode.HTML)
+
+            await self.handle_round_start()
+
         await self.send_turn_message()
+        return False
+
+    async def handle_round_start(self) -> None:
+        self.turns_until_elimination = len(self.players_in_game)
+
+        await self.send_message(
+            f"Round {self.round} is starting...\n\nLeaderboard:\n" + self.get_leaderboard(),
+            parse_mode=types.ParseMode.HTML,
+        )
+
+    async def handle_round_end(self) -> None:
+        # Eliminate player(s) with lowest score
+        # Hence the possibility of no winners
+        min_score = min(p.letter_count for p in self.players_in_game)
+        eliminated = [p for p in self.players_in_game if p.letter_count == min_score]
+
+        await self.send_message(
+            (
+                f"Round {self.round} completed.\n\nLeaderboard:\n"
+                + self.get_leaderboard()
+                + "\n\n"
+                + ", ".join(p.mention for p in eliminated)
+                + " "
+                + ("is" if len(eliminated) == 1 else "are")
+                + f" eliminated for having the lowest score of {min_score}."
+            ),
+            parse_mode=types.ParseMode.HTML,
+        )
+
+        # Update attributes
+        self.players_in_game = [p for p in self.players_in_game if p not in eliminated]
+        self.round += 1
+        self.turns_until_elimination = len(self.players_in_game)
 
 
 class MixedEliminationGame(EliminationGame):
+    # Implementing this game mode was a mistake
+    # self.current_word does not store the chosen first letter
+    # but the whole word during ChosenFirstLetterGame here
+    # for easier transition of game modes
+
     name = "mixed elimination game"
-    game_modes = [ClassicGame, ChosenFirstLetterGame, BannedLettersGame, RequiredLetterGame]
+    game_modes = [
+        ClassicGame,
+        ChosenFirstLetterGame,
+        BannedLettersGame,
+        RequiredLetterGame,
+    ]
 
     def __init__(self, group_id):
         super().__init__(group_id)
@@ -1020,21 +1053,40 @@ class MixedEliminationGame(EliminationGame):
         text = f"Turn: {self.players_in_game[0].mention}"
         if self.turns_until_elimination > 1:
             text += f" (Next: {self.players_in_game[1].name})"
-        text += (f"\nYour word must start with "
-                 f"<i>{self.current_word[0 if self.game_mode is ChosenFirstLetterGame else -1].upper()}</i>")
+        text += "\n"
+
+        if self.game_mode is ChosenFirstLetterGame:
+            starting_letter = self.current_word[0]
+        else:
+            starting_letter = self.current_word[-1]
+        text += f"Your word must start with <i>{starting_letter.upper()}</i>"
+
         if self.game_mode is BannedLettersGame:
             text += f" and <b>exclude</b> <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
         elif self.game_mode is RequiredLetterGame:
             text += f" and <b>include</b> <i>{self.required_letter.upper()}</i>"
-        text += ".\n" + f"You have <b>{self.time_limit}s</b> to answer.\n\n" + "Leaderboard:\n"
-        await self.send_message(text + self.get_leaderboard(show_player=self.players_in_game[0]),
-                                parse_mode=types.ParseMode.HTML)
+        text += ".\n"
+
+        text += f"You have <b>{self.time_limit}s</b> to answer.\n\n"
+        text += "Leaderboard:\n" + self.get_leaderboard(show_player=self.players_in_game[0])
+        await self.send_message(text, parse_mode=types.ParseMode.HTML)
+
+        # Reset per-turn attributes
         self.answered = False
         self.accepting_answers = True
         self.time_left = self.time_limit
 
+    async def additional_answer_checkers(self, word: str, message: types.Message) -> bool:
+        if self.game_mode is BannedLettersGame:
+            return await BannedLettersGame.additional_answer_checkers(self, word, message)
+        elif self.game_mode is RequiredLetterGame:
+            return await RequiredLetterGame.additional_answer_checkers(self, word, message)
+        return True
+
     async def handle_answer(self, message: types.Message) -> None:
         word = message.text.lower()
+
+        # Starting letter
         if self.game_mode is ChosenFirstLetterGame:
             if not word.startswith(self.current_word[0]):
                 await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[0].upper()}_.")
@@ -1042,125 +1094,83 @@ class MixedEliminationGame(EliminationGame):
         elif not word.startswith(self.current_word[-1]):
             await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.")
             return
-        if self.game_mode is BannedLettersGame:
-            if any(c for c in self.banned_letters if c in word):
-                await message.reply(f"_{word.capitalize()}_ includes banned letters "
-                                    f"({', '.join(c.upper() for c in self.banned_letters if c in word)}).")
-                return
-        elif self.game_mode is RequiredLetterGame:
-            if self.required_letter not in word:
-                await message.reply(f"_{word.capitalize()}_ does not include _{self.required_letter}_.")
-                return
+
         if word in self.used_words:
             await message.reply(f"_{word.capitalize()}_ has been used.")
             return
-        if word not in get_words()[word[0]]:
+        if not check_word_existence(word):
             await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
             return
-        self.used_words.add(word)
-        self.turns += 1
-        self.players_in_game[0].word_count += 1
-        self.players_in_game[0].letter_count += len(word)
+        if not await self.additional_answer_checkers(word, message):
+            return
+
+        self.post_turn_processing(word)
+        await self.send_post_turn_message(word)
+
+    def post_turn_processing(self, word: str) -> None:
+        super().post_turn_processing(word)
         if self.game_mode is RequiredLetterGame:
-            self.required_letter = random.choice([c for c in ascii_lowercase if c != word[-1]])
-        self.current_word = word
-        if len(word) > len(self.longest_word):
-            self.longest_word = word
-            self.longest_word_sender_id = message.from_user.id
-        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=str.__len__)
-        self.answered = True
-        self.accepting_answers = False
-        await self.send_message(f"_{word.capitalize()}_ is accepted.")
+            RequiredLetterGame.change_required_letter(self)
 
     async def running_initialization(self) -> None:
-        self.turns_until_elimination = len(self.players)
-        self.game_mode = random.choice(self.game_modes)
-        text = f"Round 1 is starting...\nMode: <b>{self.game_mode.name.capitalize()}</b>"
-        if self.game_mode is not BannedLettersGame:
-            self.current_word = random.choice(get_words_li()[random.choice(ascii_lowercase)])
-        if self.game_mode is ChosenFirstLetterGame:
-            text += f"\nThe chosen first letter is <i>{self.current_word[0].upper()}</i>."
-        elif self.game_mode is BannedLettersGame:
-            alphabets = list(ascii_lowercase)
-            for i in range(random.randint(2, 4)):
-                self.banned_letters.append(random.choice(alphabets))
-                if self.banned_letters[-1] in "aeiou":
-                    alphabets = [c for c in alphabets if c not in "aeiou"]
-                else:
-                    alphabets.remove(self.banned_letters[-1])
-            self.banned_letters.sort()
-            unbanned = "".join([c for c in ascii_lowercase if c not in self.banned_letters])
-            self.current_word = random.choice(get_words_li()[random.choice(unbanned)])
-            while any(c in self.current_word for c in self.banned_letters):
-                self.current_word = random.choice(get_words_li()[random.choice(unbanned)])
-            text += f"\nBanned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
-        elif self.game_mode is RequiredLetterGame:
-            self.required_letter = random.choice([c for c in ascii_lowercase if c != self.current_word[-1]])
-        if self.game_mode is not ChosenFirstLetterGame:
-            self.used_words.add(self.current_word)
         self.start_time = datetime.now().replace(microsecond=0)
-        await self.send_message(f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
-                                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
-                                parse_mode=types.ParseMode.HTML)
-        await self.send_message(text + "\n\nLeaderboard:\n" + self.get_leaderboard(),
-                                parse_mode=types.ParseMode.HTML)
+        self.turns_until_elimination = len(self.players_in_game)
+        self.game_mode = random.choice(self.game_modes)
 
-    async def running_phase(self) -> Optional[bool]:
-        if not self.answered:
-            self.time_left -= 1
-            if self.time_left > 0:
-                return
-            self.accepting_answers = False
-            await self.send_message(f"{self.players_in_game[0].mention} ran out of time!",
-                                    parse_mode=types.ParseMode.HTML)
-        self.players_in_game.append(self.players_in_game.pop(0))
-        self.turns_until_elimination -= 1
-        if not self.turns_until_elimination:
-            min_score = min(p.letter_count for p in self.players_in_game)
-            eliminated = [p for p in self.players_in_game if p.letter_count == min_score]
-            await self.send_message(
-                f"Round {self.round} completed.\n\nLeaderboard:\n" + self.get_leaderboard() + "\n\n"
-                + ", ".join(p.mention for p in eliminated) + " " + ("is" if len(eliminated) == 1 else "are")
-                + f" eliminated for having the lowest score of {min_score}.",
-                parse_mode=types.ParseMode.HTML
-            )
-            self.players_in_game = [p for p in self.players_in_game if p not in eliminated]
-            if len(self.players_in_game) <= 1:
-                self.end_time = datetime.now().replace(microsecond=0)
-                td = self.end_time - self.start_time
-                await self.send_message(
-                    f"{(self.players_in_game[0].mention if self.players_in_game else 'No one')} won the game out of "
-                    f"{len(self.players)} players!\n"
-                    f"Total words: {self.turns}"
-                    + (f"\nLongest word: <i>{self.longest_word.capitalize()}</i> from "
-                       f"{[p.name for p in self.players if p.user_id == self.longest_word_sender_id][0]}"
-                       if self.longest_word else "")
-                    + f"\nGame length: <code>{int(td.total_seconds()) // 3600:02}{str(td)[-6:]}</code>",
-                    parse_mode=types.ParseMode.HTML
-                )
-                del GAMES[self.group_id]
-                return True
-            self.round += 1
-            self.turns_until_elimination = len(self.players_in_game)
-            self.game_mode = random.choice([i for i in self.game_modes if i is not self.game_mode])
-            text = f"Round {self.round} is starting...\nMode: <b>{self.game_mode.name.capitalize()}</b>"
-            if self.game_mode is ChosenFirstLetterGame:
-                self.current_word = self.current_word[-1]
-                text += f"\nThe chosen first letter is <i>{self.current_word[0].upper()}</i>."
-            elif self.game_mode is BannedLettersGame:
-                self.banned_letters.clear()
-                alphabets = list(ascii_lowercase)
-                alphabets.remove(self.current_word[-1])
-                for i in range(random.randint(2, 4)):
-                    self.banned_letters.append(random.choice(alphabets))
-                    if self.banned_letters[-1] in "aeiou":
-                        alphabets = [c for c in alphabets if c not in "aeiou"]
-                    else:
-                        alphabets.remove(self.banned_letters[-1])
-                self.banned_letters.sort()
-                text += f"\nBanned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
-            elif self.game_mode is RequiredLetterGame:
-                self.required_letter = random.choice([c for c in ascii_lowercase if c != self.current_word[-1]])
-            await self.send_message(text + "\n\nLeaderboard:\n" + self.get_leaderboard(),
-                                    parse_mode=types.ParseMode.HTML)
-        await self.send_turn_message()
+        # First round is special since first word has to be set
+
+        # Set starting word and mode-based attributes
+        if self.game_mode is BannedLettersGame:
+            BannedLettersGame.set_banned_letters(self)
+            self.current_word = get_random_word(banned_letters=self.banned_letters)
+        elif self.game_mode is ChosenFirstLetterGame:
+            # Ensure uniform probability of each letter as the starting letter
+            self.current_word = get_random_word(starting_letter=random.choice(ascii_lowercase))
+        else:
+            self.current_word = get_random_word()
+        if self.game_mode is RequiredLetterGame:
+            RequiredLetterGame.change_required_letter(self)
+        self.used_words.add(self.current_word)
+
+        await self.send_message(
+            (
+                f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game])
+            ),
+            parse_mode=types.ParseMode.HTML,
+        )
+
+        round_text = f"Round 1 is starting...\nMode: <b>{self.game_mode.name.capitalize()}</b>"
+        if self.game_mode is ChosenFirstLetterGame:
+            round_text += f"\nThe chosen first letter is <i>{self.current_word[0].upper()}</i>."
+        elif self.game_mode is BannedLettersGame:
+            round_text += f"\nBanned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
+        round_text += "\n\nLeaderboard:\n" + self.get_leaderboard()
+        await self.send_message(round_text, parse_mode=types.ParseMode.HTML)
+
+    def set_game_mode(self) -> None:
+        # Random game mode without having the same mode twice in a row
+        modes = self.game_modes[:]
+        if self.game_mode:
+            modes.remove(self.game_mode)
+        self.game_mode = random.choice(modes)
+
+        # Set mode-based attributes
+        if self.game_mode is BannedLettersGame:
+            BannedLettersGame.set_banned_letters(self)
+        elif self.game_mode is RequiredLetterGame:
+            RequiredLetterGame.change_required_letter(self)
+
+    async def handle_round_start(self) -> None:
+        self.turns_until_elimination = len(self.players_in_game)
+        self.set_game_mode()
+
+        round_text = f"Round {self.round} is starting...\nMode: <b>{self.game_mode.name.capitalize()}</b>"
+        if self.game_mode is ChosenFirstLetterGame:
+            # The last letter of the current word becomes the chosen first letter
+            self.current_word = self.current_word[-1]
+            round_text += f"\nThe chosen first letter is <i>{self.current_word.upper()}</i>."
+        elif self.game_mode is BannedLettersGame:
+            round_text += f"\nBanned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
+        round_text += "\n\nLeaderboard:\n" + self.get_leaderboard()
+        await self.send_message(round_text, parse_mode=types.ParseMode.HTML)
