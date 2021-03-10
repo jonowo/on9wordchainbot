@@ -3,7 +3,7 @@ from typing import List, Set, Any, Optional
 
 from aiogram import types
 
-from constants import bot, pool, ON9BOT_ID, ADMIN_GROUP_ID, VIP, get_words_all, get_words_set, get_words_li
+from constants import bot, on9bot, pool, ADMIN_GROUP_ID, VIP, get_words_all, get_words_set, get_words_li
 
 
 def check_word_existence(word: str) -> bool:
@@ -61,7 +61,6 @@ async def amt_donated(user_id: int) -> int:
 
 
 async def has_star(user_id: int) -> bool:
-    return user_id in VIP or user_id == ON9BOT_ID or await amt_donated(user_id)
-
+    return user_id in VIP or user_id == on9bot.id or await amt_donated(user_id)
 
 # TODO: Make decorator for group-only / running-game-only command (with message saying group only)

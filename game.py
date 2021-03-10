@@ -8,16 +8,16 @@ from aiogram import types
 from aiogram.utils.exceptions import BadRequest
 from aiogram.utils.markdown import quote_html
 
-from constants import GAMES, ON9BOT_ID, GameSettings, GameState, bot, on9bot, pool
+from constants import GAMES, GameSettings, GameState, bot, on9bot, pool
 from utils import get_random_word, send_admin_group, check_word_existence, has_star
 
 
 class Player:
     def __init__(self, user: Optional[types.User] = None, vp: bool = False) -> None:
         if vp:  # VP: On9Bot
-            self.user_id = ON9BOT_ID
+            self.user_id = on9bot.id
             self.name = "<a href='https://t.me/On9Bot'>On9Bot \u2b50\ufe0f</a>"
-            self.mention = f"<a href='tg://user?id={ON9BOT_ID}'>On9Bot \u2b50\ufe0f</a>"
+            self.mention = f"<a href='tg://user?id={on9bot.id}'>On9Bot \u2b50\ufe0f</a>"
             self.is_vp = True
         else:
             self.user_id = user.id
@@ -31,6 +31,10 @@ class Player:
         self.word_count = 0
         self.letter_count = 0
         self.longest_word = ""
+
+        # For elimination games only
+        # Though generally score = letter count, there is turn score increment ceiling for more balanced gameplay
+        self.score = 0
 
     async def update_donor_status(self, user: types.User) -> None:
         # When you can't use async functions in __init__
@@ -91,8 +95,8 @@ class ClassicGame:
                 return
 
         player = Player(user)
-        await player.update_donor_status(user)
         self.players.append(player)
+        await player.update_donor_status(user)
 
         await self.send_message(
             f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} "
@@ -118,14 +122,15 @@ class ClassicGame:
             if p.user_id == user.id:
                 return
 
-        if user.id == ON9BOT_ID:
+        if user.id == on9bot.id:
             player = Player(vp=True)
         else:
             player = Player(user)
-            await player.update_donor_status(user)
         self.players.append(player)
         if self.state == GameState.RUNNING:
             self.players_in_game.append(player)
+        if user.id != on9bot.id:
+            await player.update_donor_status(user)
 
         await self.send_message(
             f"{player.name} has been joined. There {'is' if len(self.players) == 1 else 'are'} "
@@ -177,6 +182,7 @@ class ClassicGame:
         )
 
     async def extend(self, message: types.Message) -> None:
+        # TODO: Prevent non-admin players from extending
         if self.state != GameState.JOINING:
             return
 
@@ -215,13 +221,21 @@ class ClassicGame:
             )
 
     async def addvp(self) -> None:
+        if self.state != GameState.JOINING or len(self.players) >= self.max_players:
+            return
+
+        # Check if On9Bot already joined
+        for p in self.players:
+            if p.is_vp:
+                return
+
         try:
-            vp = await bot.get_chat_member(self.group_id, ON9BOT_ID)
+            vp = await bot.get_chat_member(self.group_id, on9bot.id)
             # VP must be chat member
             assert vp.is_chat_member() or vp.is_chat_admin()
         except (BadRequest, AssertionError):
             await self.send_message(
-                f"Add [On9Bot](tg://user?id={ON9BOT_ID}) here to play as a virtual player.",
+                f"Add [On9Bot](tg://user?id={on9bot.id}) here to play as a virtual player.",
                 reply_markup=types.InlineKeyboardMarkup(
                     inline_keyboard=[
                         [
@@ -234,14 +248,6 @@ class ClassicGame:
                 ),
             )
             return
-
-        if self.state != GameState.JOINING or len(self.players) >= self.max_players:
-            return
-
-        # Check if On9Bot already joined
-        for p in self.players:
-            if p.is_vp:
-                return
 
         vp = Player(vp=True)
         self.players.append(vp)
@@ -364,6 +370,10 @@ class ClassicGame:
 
         self.players_in_game[0].word_count += 1
         self.players_in_game[0].letter_count += len(word)
+        if isinstance(self, EliminationGame):
+            self.players_in_game[0].score += min(len(word), GameSettings.ELIM_MAX_TURN_SCORE)
+            if len(word) > GameSettings.ELIM_MAX_TURN_SCORE:
+                self.exceeded_score_limit = True
         if len(word) > len(self.longest_word):
             self.longest_word = word
             self.longest_word_sender_id = self.players_in_game[0].user_id
@@ -871,6 +881,7 @@ class EliminationGame(ClassicGame):
         self.min_letters_limit = 1  # A word must contain at least a letter after all
         self.round = 1
         self.turns_until_elimination = 0
+        self.exceeded_score_limit = False  # Remind players that there is a turn score increment ceiling
 
     async def forcejoin(self, message: types.Message):
         # Joining in the middle of an elimination game puts one at a disadvantage since points are cumulative
@@ -884,48 +895,48 @@ class EliminationGame(ClassicGame):
         players = self.players_in_game[:]
         # Sort by letter count descending then user id ascending
         # The user id part is to ensure consistent ordering of players with same letter count
-        players.sort(key=lambda k: (-k.letter_count, k.user_id))
+        players.sort(key=lambda k: (-k.score, k.user_id))
         text = ""
 
         if not show_player:
             # Show every player
             for i, p in enumerate(players, start=1):
-                text += f"{i}. {p.name}: {p.letter_count}\n"
+                text += f"{i}. {p.name}: {p.score}\n"
             return text.rstrip()
 
         # Highlight player (while showing 10 other players at max)
         if len(players) <= 10:
             # Show every player
             for i, p in enumerate(players, start=1):
-                line = f"{i}. {p.name}: {p.letter_count}\n"
+                line = f"{i}. {p.name}: {p.score}\n"
                 if p is show_player:
                     line = "> " + line
                 text += line
         elif players.index(show_player) <= 4 or players.index(show_player) >= len(players) - 5:
             # Player is in first or last 5 places, show those places
             for i, p in enumerate(players[:5], start=1):
-                line = f"{i}. {p.name}: {p.letter_count}\n"
+                line = f"{i}. {p.name}: {p.score}\n"
                 if p is show_player:
                     line = "> " + line
                 text += line
             text += "...\n"
             for i, p in enumerate(players[-5:], start=len(players) - 4):
-                line = f"{i}. {p.name}: {p.letter_count}\n"
+                line = f"{i}. {p.name}: {p.score}\n"
                 if p is show_player:
                     line = "> " + line
                 text += line
         else:
             # Player not in first or last 5 places, show player in middle
             for i, p in enumerate(players[:5], start=1):
-                text += f"{i}. {p.name}: {p.letter_count}\n"
+                text += f"{i}. {p.name}: {p.score}\n"
             # Prevent awkward ellipses if player is 6th place from top or bottom
             if players[5] is not show_player:
                 text += "...\n"
-            text += f"> {players.index(show_player) + 1}. {show_player.name}: {show_player.letter_count}\n"
+            text += f"> {players.index(show_player) + 1}. {show_player.name}: {show_player.score}\n"
             if players[-6] is not show_player:
                 text += "...\n"
             for i, p in enumerate(players[-5:], start=len(players) - 4):
-                text += f"{i}. {p.name}: {p.letter_count}\n"
+                text += f"{i}. {p.name}: {p.score}\n"
         return text.rstrip()
 
     async def send_turn_message(self) -> None:
@@ -948,7 +959,11 @@ class EliminationGame(ClassicGame):
         self.time_left = self.time_limit
 
     async def send_post_turn_message(self, word: str) -> None:
-        await self.send_message(f"_{word.capitalize()}_ is accepted.")
+        text = f"_{word.capitalize()}_ is accepted."
+        if self.exceeded_score_limit:
+            text += f"\nThat is a long word! It will only count for {GameSettings.ELIM_MAX_TURN_SCORE} points."
+            self.exceeded_score_limit = False
+        await self.send_message(text)
         # No limit reduction
 
     async def running_initialization(self) -> None:
@@ -1007,8 +1022,8 @@ class EliminationGame(ClassicGame):
     async def handle_round_end(self) -> None:
         # Eliminate player(s) with lowest score
         # Hence the possibility of no winners
-        min_score = min(p.letter_count for p in self.players_in_game)
-        eliminated = [p for p in self.players_in_game if p.letter_count == min_score]
+        min_score = min(p.score for p in self.players_in_game)
+        eliminated = [p for p in self.players_in_game if p.score == min_score]
 
         await self.send_message(
             (

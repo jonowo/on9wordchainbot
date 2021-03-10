@@ -6,9 +6,9 @@
 On9 Word Chain Bot hosts games of word chain in Telegram groups.
 
 ### Statistics
-- 410k+ games
-- 150k+ players
-- 38k+ groups
+- 430k+ games
+- 160k+ players
+- 40k+ groups
 
 ### Links
 - [On9 Word Chain Bot](https://t.me/on9wordchainbot) (Live Version)
@@ -19,12 +19,18 @@ On9 Word Chain Bot hosts games of word chain in Telegram groups.
 - Module restructure
 - Add support for other languages in ClassicGame
 - i18n for text strings
+- /forcestart voting for non-admins
 
 ## Installation
 
 ### Requirements
 Python 3.7+ \
-PostgreSQL 11+
+PostgreSQL 11+ \
+2 Telegram bots
+
+> It is highly recommended that you turn off privacy mode for On9 Word Chain Bot at @BotFather,
+> which is on by default.
+> With privacy mode on, the bot will not receive players' answers unless they reply to the bot.
 
 ### Configuration
 Create `config.json` in the format described in [config_format.json](config_format.json).

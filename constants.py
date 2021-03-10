@@ -64,7 +64,7 @@ def get_words_li() -> Dict[str, List[str]]:
     return WORDS_LI
 
 
-async def update_words():
+async def update_words() -> None:
     global WORDS_ALL, WORDS_LI, WORDS
 
     # Retrieve words from online repo and table of added words in db
@@ -121,6 +121,7 @@ class GameSettings:
     MAX_WORD_LENGTH_LIMIT = 10
     WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE = 1
     TURNS_BETWEEN_LIMITS_CHANGE = 5
+    ELIM_MAX_TURN_SCORE = 20
 
 
 class GroupFilter(BoundFilter):
