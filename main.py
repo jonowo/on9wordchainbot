@@ -11,6 +11,7 @@ from uuid import uuid4
 import aiofiles
 import aiofiles.os
 import matplotlib.pyplot as plt
+from aiocache import cached
 from aiogram import executor, types
 from aiogram.types.message import ContentTypes
 from aiogram.utils.exceptions import TelegramAPIError, BadRequest, MigrateToChat
@@ -484,14 +485,14 @@ async def addvp(message: types.Message) -> None:
             disable_web_page_preview=True,
         )
         return
-    await GAMES[group_id].addvp()
+    await GAMES[group_id].addvp(message)
 
 
 @dp.message_handler(is_group=True, commands="remvp")
 async def remvp(message: types.Message) -> None:
     group_id = message.chat.id
     if group_id in GAMES:
-        await GAMES[group_id].remvp()
+        await GAMES[group_id].remvp(message)
 
 
 @dp.message_handler(is_group=True, is_owner=True, commands="incmaxp")
@@ -581,8 +582,8 @@ async def cmd_groupstats(message: types.Message) -> None:  # TODO: Add top playe
     )
 
 
-@dp.message_handler(commands="globalstats")
-async def cmd_globalstats(message: types.Message) -> None:  # TODO: Cache this maybe every 5s
+@cached(ttl=5)
+async def get_global_stats() -> str:
     async with pool.acquire() as conn:
         group_cnt, game_cnt = await conn.fetchrow(
             "SELECT COUNT(DISTINCT group_id), COUNT(*) FROM game;"
@@ -590,7 +591,7 @@ async def cmd_globalstats(message: types.Message) -> None:  # TODO: Cache this m
         player_cnt, word_cnt, letter_cnt = await conn.fetchrow(
             "SELECT COUNT(*), SUM(word_count), SUM(letter_count) FROM player;"
         )
-    await message.reply(
+    return (
         "\U0001f4ca Global statistics\n"
         f"*{group_cnt}* groups\n"
         f"*{player_cnt}* players\n"
@@ -598,6 +599,11 @@ async def cmd_globalstats(message: types.Message) -> None:  # TODO: Cache this m
         f"*{word_cnt}* total words played\n"
         f"*{letter_cnt}* total letters played"
     )
+
+
+@dp.message_handler(commands="globalstats")
+async def cmd_globalstats(message: types.Message) -> None:
+    await message.reply(await get_global_stats())
 
 
 @dp.message_handler(is_owner=True, commands=["trend", "trends"])

@@ -4,11 +4,12 @@ from datetime import datetime
 from string import ascii_lowercase
 from typing import Any, Optional
 
+from aiocache import cached
 from aiogram import types
 from aiogram.utils.exceptions import BadRequest
 from aiogram.utils.markdown import quote_html
 
-from constants import GAMES, GameSettings, GameState, bot, on9bot, pool
+from constants import GAMES, STAR, GameSettings, GameState, bot, on9bot, pool, OWNER_ID
 from utils import get_random_word, send_admin_group, check_word_existence, has_star
 
 
@@ -16,8 +17,8 @@ class Player:
     def __init__(self, user: Optional[types.User] = None, vp: bool = False) -> None:
         if vp:  # VP: On9Bot
             self.user_id = on9bot.id
-            self.name = "<a href='https://t.me/On9Bot'>On9Bot \u2b50\ufe0f</a>"
-            self.mention = f"<a href='tg://user?id={on9bot.id}'>On9Bot \u2b50\ufe0f</a>"
+            self.name = f"<a href='https://t.me/On9Bot'>On9Bot {STAR}</a>"
+            self.mention = f"<a href='tg://user?id={on9bot.id}'>On9Bot {STAR}</a>"
             self.is_vp = True
         else:
             self.user_id = user.id
@@ -33,7 +34,8 @@ class Player:
         self.longest_word = ""
 
         # For elimination games only
-        # Though generally score = letter count, there is turn score increment ceiling for more balanced gameplay
+        # Though generally score = letter count,
+        # there is turn score increment ceiling for more balanced gameplay
         self.score = 0
 
     async def update_donor_status(self, user: types.User) -> None:
@@ -42,10 +44,10 @@ class Player:
             return
 
         if user.username:
-            self.name = f"<a href='https://t.me/{user.username}'>{quote_html(user.full_name)} \u2b50\ufe0f</a>"
+            self.name = f"<a href='https://t.me/{user.username}'>{quote_html(user.full_name)} {STAR}</a>"
         else:
-            self.name = f"<b>{quote_html(user.full_name)} \u2b50\ufe0f</b>"
-        self.mention = user.get_mention(name=user.full_name + " \u2b50\ufe0f", as_html=True)
+            self.name = f"<b>{quote_html(user.full_name)} {STAR}</b>"
+        self.mention = user.get_mention(name=f"{user.full_name} {STAR}", as_html=True)
 
 
 class ClassicGame:
@@ -56,11 +58,19 @@ class ClassicGame:
         self.players = []
         self.players_in_game = []
         self.state = GameState.JOINING
+        self.start_time = None
+        self.end_time = None
+        # Store user ids rather than Player object since players may quit then join to extend again
+        self.extended_user_ids = set()
+
+        # Game settings
         self.min_players = GameSettings.NORMAL_GAME_MIN_PLAYERS
         self.max_players = GameSettings.MAX_PLAYERS
         self.time_left = GameSettings.INITIAL_JOINING_PHASE_SECONDS
         self.time_limit = GameSettings.MAX_TURN_SECONDS
         self.min_letters_limit = GameSettings.MIN_WORD_LENGTH_LIMIT
+
+        # Game attributes
         self.current_word = None
         self.longest_word = ""
         self.longest_word_sender_id = None  # TODO: Change to PLayer object instead of id
@@ -68,13 +78,17 @@ class ClassicGame:
         self.accepting_answers = False
         self.turns = 0
         self.used_words = set()
-        self.start_time = None
-        self.end_time = None
+
+    def user_in_game(self, user_id: int) -> bool:
+        for p in self.players:
+            if p.user_id == user_id:
+                return True
+        return False
 
     async def send_message(self, *args: Any, **kwargs: Any) -> types.Message:
         return await bot.send_message(self.group_id, *args, disable_web_page_preview=True, **kwargs)
 
-    # TODO: Use async_lru
+    @cached(ttl=15)
     async def is_admin(self, user_id: int) -> bool:
         user = await bot.get_chat_member(self.group_id, user_id)
         return user.is_chat_admin()
@@ -90,9 +104,8 @@ class ClassicGame:
 
         # Check if user already joined
         user = message.from_user
-        for p in self.players:
-            if p.user_id == user.id:
-                return
+        if self.user_in_game(user.id):
+            return
 
         player = Player(user)
         self.players.append(player)
@@ -118,9 +131,8 @@ class ClassicGame:
             user = message.from_user
 
         # Check if user already joined
-        for p in self.players:
-            if p.user_id == user.id:
-                return
+        if self.user_in_game(user.id):
+            return
 
         if user.id == on9bot.id:
             player = Player(vp=True)
@@ -182,18 +194,35 @@ class ClassicGame:
         )
 
     async def extend(self, message: types.Message) -> None:
-        # TODO: Prevent non-admin players from extending
         if self.state != GameState.JOINING:
             return
 
-        arg = message.text.partition(" ")[2]
+        # Check if extender is player/admin/owner
+        if (
+            message.from_user.id != OWNER_ID
+            and not self.user_in_game(message.from_user.id)
+            and not await self.is_admin(message.from_user.id)
+        ):
+            await self.send_message("Imagine not being a player")
+            return
 
-        # Check if arg is a valid negative integer
-        try:
-            n = int(arg)
-            is_neg = n < 0
-            n = abs(n)
-        except ValueError:
+        # Each player can only extend once and only for 30 seconds except admins
+        if await self.is_admin(message.from_user.id):
+            arg = message.text.partition(" ")[2]
+
+            # Check if arg is a valid negative integer
+            try:
+                n = int(arg)
+                is_neg = n < 0
+                n = abs(n)
+            except ValueError:
+                n = 30
+                is_neg = False
+        elif message.from_user.id in self.extended_user_ids:
+            await self.send_message("You can only extend once peasant")
+            return
+        else:
+            self.extended_user_ids.add(message.from_user.id)
             n = 30
             is_neg = False
 
@@ -209,7 +238,8 @@ class ClassicGame:
             else:
                 self.time_left -= n
                 await self.send_message(
-                    f"The joining phase has been reduced by {n}s.\n" f"You have {self.time_left}s to /join."
+                    f"The joining phase has been reduced by {n}s.\n"
+                    f"You have {self.time_left}s to /join."
                 )
         else:
             # Extend joining phase time
@@ -217,10 +247,11 @@ class ClassicGame:
             added_duration = min(n, GameSettings.MAX_JOINING_PHASE_SECONDS - self.time_left)
             self.time_left += added_duration
             await self.send_message(
-                f"The joining phase has been extended by {added_duration}s.\n" f"You have {self.time_left}s to /join."
+                f"The joining phase has been extended by {added_duration}s.\n"
+                f"You have {self.time_left}s to /join."
             )
 
-    async def addvp(self) -> None:
+    async def addvp(self, message: types.Message) -> None:
         if self.state != GameState.JOINING or len(self.players) >= self.max_players:
             return
 
@@ -228,6 +259,15 @@ class ClassicGame:
         for p in self.players:
             if p.is_vp:
                 return
+
+        # Check if vp adder is player/admin/owner
+        if (
+            message.from_user.id != OWNER_ID
+            and not self.user_in_game(message.from_user.id)
+            and not await self.is_admin(message.from_user.id)
+        ):
+            await self.send_message("Imagine not being a player")
+            return
 
         try:
             vp = await bot.get_chat_member(self.group_id, on9bot.id)
@@ -265,7 +305,7 @@ class ClassicGame:
         if len(self.players) >= self.max_players:
             self.time_left = -99999
 
-    async def remvp(self) -> None:
+    async def remvp(self, message: types.Message) -> None:
         if self.state != GameState.JOINING:
             return
 
@@ -275,6 +315,15 @@ class ClassicGame:
                 vp = self.players.pop(i)
                 break
         else:
+            return
+
+        # Check if vp remover is player/admin
+        if (
+            message.from_user.id != OWNER_ID
+            and not self.user_in_game(message.from_user.id)
+            and not await self.is_admin(message.from_user.id)
+        ):
+            await self.send_message("Imagine not being a player")
             return
 
         await on9bot.send_message(self.group_id, "/flee@" + (await bot.me).username)
@@ -805,7 +854,7 @@ class RequiredLetterGame(ClassicGame):
     def __init__(self, group_id: int) -> None:
         super().__init__(group_id)
         # Answer must contain required letter.
-        # Required letter cannot be the ending letter of self.current_word. (Otherwise, what's the point)
+        # Required letter cannot be the ending letter of self.current_word so as to annoy the player.
         self.required_letter = None  # Changes every turn
 
     async def send_turn_message(self) -> None:
@@ -872,13 +921,17 @@ class EliminationGame(ClassicGame):
 
     def __init__(self, group_id: int) -> None:
         super().__init__(group_id)
+
+        # Elimination game settings
         self.min_players = GameSettings.SPECIAL_GAME_MIN_PLAYERS
         self.max_players = GameSettings.SPECIAL_GAME_MAX_PLAYERS
         self.time_left = GameSettings.SPECIAL_GAME_INITIAL_JOINING_PHASE_SECONDS
         self.time_limit = GameSettings.FIXED_TURN_SECONDS
-        # No need to impose minimum letters limit
-        # Answering words with few letters will eventually lead to elimination
-        self.min_letters_limit = 1  # A word must contain at least a letter after all
+        # No minimum letters limit (though a word must contain at least one letter by definition)
+        # Since answering words with few letters will eventually lead to elimination
+        self.min_letters_limit = 1
+
+        # Elimination game attributes
         self.round = 1
         self.turns_until_elimination = 0
         self.exceeded_score_limit = False  # Remind players that there is a turn score increment ceiling
@@ -1045,7 +1098,7 @@ class EliminationGame(ClassicGame):
 
 
 class MixedEliminationGame(EliminationGame):
-    # Implementing this game mode was a mistake
+    # Implementing this game mode was a misteak
     # self.current_word does not store the chosen first letter
     # but the whole word during ChosenFirstLetterGame here
     # for easier transition of game modes

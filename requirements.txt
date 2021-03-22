@@ -1,7 +1,8 @@
-aiofiles
+aiocache
 aiodns
-aiohttp
+aiofiles
 aiogram
+aiohttp
 asyncpg
 cchardet
 matplotlib

@@ -97,6 +97,8 @@ async def init() -> None:
 
 loop.run_until_complete(init())
 
+STAR = "\u2b50\ufe0f"
+
 
 class GameState:
     JOINING = 0
