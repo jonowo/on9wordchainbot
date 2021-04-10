@@ -6,11 +6,11 @@
 On9 Word Chain Bot hosts games of word chain in Telegram groups.
 
 ### Statistics
-- 430k+ games
-- 160k+ players
-- 40k+ groups
+- 480k+ games
+- 180k+ players
+- 43k+ groups
 
-### Links
+### Telegram Links
 - [On9 Word Chain Bot](https://t.me/on9wordchainbot) (Live Version)
 - [Official Group](https://t.me/on9wordchain)
 - [Word Additions Channel](https://t.me/on9wcwa)

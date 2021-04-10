@@ -375,9 +375,9 @@ async def cmd_startmixedelim(message: types.Message) -> None:
         return
 
     if (
-        message.chat.id not in VIP_GROUP
-        and message.from_user.id not in VIP
-        and (await amt_donated(message.from_user.id)) < 30
+            message.chat.id not in VIP_GROUP
+            and message.from_user.id not in VIP
+            and (await amt_donated(message.from_user.id)) < 30
     ):
         await message.reply(
             "This game mode is a donation reward.\n"
@@ -501,9 +501,9 @@ async def cmd_incmaxp(message: types.Message) -> None:
     # Nope
     group_id = message.chat.id
     if (
-        group_id not in GAMES
-        or GAMES[group_id].state != GameState.JOINING
-        or GAMES[group_id].max_players == GameSettings.INCREASED_MAX_PLAYERS
+            group_id not in GAMES
+            or GAMES[group_id].state != GameState.JOINING
+            or GAMES[group_id].max_players == GameSettings.INCREASED_MAX_PLAYERS
     ):
         return
     GAMES[group_id].max_players = GameSettings.INCREASED_MAX_PLAYERS
@@ -1033,7 +1033,7 @@ async def cmd_addwords(message: types.Message) -> None:
     existing = []
     rejected = []
     rejected_with_reason = []
-    for w in words_to_add[:]:
+    for w in words_to_add[:]:  # Cannot iterate while deleting
         if check_word_existence(w):
             existing.append("_" + w.capitalize() + "_")
             words_to_add.remove(w)
@@ -1051,10 +1051,7 @@ async def cmd_addwords(message: types.Message) -> None:
     text = ""
     if words_to_add:
         async with pool.acquire() as conn:
-            await conn.executemany(
-                "INSERT INTO wordlist (word, accepted) VALUES ($1, true)",
-                [(w,) for w in words_to_add],
-            )
+            await conn.copy_records_to_table("wordlist", records=[(w, True, None) for w in words_to_add])
         text += f"Added {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.\n"
     if existing:
         text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
@@ -1104,10 +1101,10 @@ async def cmd_rejword(message: types.Message) -> None:
 async def cmd_feedback(message: types.Message) -> None:
     rmsg = message.reply_to_message
     if (
-        message.chat.id < 0
-        and not message.get_command().partition("@")[2]
-        and (not rmsg or rmsg.from_user.id != bot.id)
-        or message.forward_from
+            message.chat.id < 0
+            and not message.get_command().partition("@")[2]
+            and (not rmsg or rmsg.from_user.id != bot.id)
+            or message.forward_from
     ):  # Make sure feedback is directed at this bot
         return
 
@@ -1130,13 +1127,13 @@ async def cmd_feedback(message: types.Message) -> None:
 async def message_handler(message: types.Message) -> None:
     group_id = message.chat.id
     if (
-        group_id in GAMES
-        and GAMES[group_id].players_in_game
-        and message.from_user.id == GAMES[group_id].players_in_game[0].user_id
-        and not GAMES[group_id].answered
-        and GAMES[group_id].accepting_answers
-        # TODO: Modify to support other languages
-        and all([c in ascii_lowercase for c in message.text.lower()])
+            group_id in GAMES
+            and GAMES[group_id].players_in_game
+            and message.from_user.id == GAMES[group_id].players_in_game[0].user_id
+            and not GAMES[group_id].answered
+            and GAMES[group_id].accepting_answers
+            # TODO: Modify to support other languages
+            and all([c in ascii_lowercase for c in message.text.lower()])
     ):
         await GAMES[group_id].handle_answer(message)
 
