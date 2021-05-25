@@ -19,42 +19,38 @@ On9 Word Chain Bot hosts games of word chain in Telegram groups.
 - Module restructure
 - Add support for other languages in ClassicGame
 - i18n for text strings
-- /forcestart voting for non-admins
 
 ## Installation
 
 ### Requirements
 Python 3.7+ \
-PostgreSQL 11+ \
+PostgreSQL 11+\
 2 Telegram bots
 
-> It is highly recommended that you turn off privacy mode for On9 Word Chain Bot at @BotFather,
-> which is on by default.
-> With privacy mode on, the bot will not receive players' answers unless they reply to the bot.
+> It is highly recommended that you turn off privacy mode for On9 Word Chain Bot via @BotFather,
+> which is on by default. Otherwise, leaving privacy mode on, the bot will only receive players'
+> answers when they reply to the bot.
 
 ### Configuration
-Rename [config_format.json](config_format.json) to `config.json` and edit the constants.
+Rename [config_format.json](config_format.json) to `config.json` and edit the following constants:
 
-Constants:
 - `TOKEN`*: A Telegram bot token.
-- `ON9BOT_TOKEN`*: Another Telegram bot token for virtual player bot. Can be the same as `TOKEN`.
-- `DB_URI`: A PostgresSQL database URI.
-  ([format](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING))
-  (Won't work with other databases, why did I write raw SQL)
+- `ON9BOT_TOKEN`*: Another Telegram bot token for the virtual player bot. Can be the same as `TOKEN`.
+- `DB_URI`: A [PostgresSQL database URI](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
 - `PROVIDER_TOKEN`*#: A Telegram payment provider token.
 - `OWNER_ID`: Telegram user id of the bot owner.
 - `ADMIN_GROUP_ID`^: Telegram group id of the bot admin group. Error messages and word requests are sent here.
 - `OFFICIAL_GROUP_ID`^: Telegram group id of the official group of the bot.
 - `WORD_ADDITION_CHANNEL_ID`^: Telegram channel id of the channel to announce word additions.
-- `VIP`: A list of Telegram user ids of VIPs.
-- `VIP_GROUP`: A list of Telegram group ids of VIP groups.
+- `VIP`: A list of Telegram user ids designated as VIPs.
+- `VIP_GROUP`: A list of Telegram group ids designated as VIP groups.
 
 \*: Obtained via [BotFather](https://t.me/BotFather). \
 \#: Optional if the payment commands are commented out.
     Bot currently uses Stripe, other payment providers may not be supported. \
-^: Set them to the same throwaway group if you do not need related features.
+^: Set to the same throwaway group if their features are not used.
 
-Make sure all data is valid to prevent errors.
+Make sure all constants are valid to prevent errors.
 
 ### Table Creation
 Create the required tables in your PostgreSQL database by running [init.sql](init.sql).
