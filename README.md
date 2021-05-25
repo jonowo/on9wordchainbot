@@ -6,9 +6,9 @@
 On9 Word Chain Bot hosts games of word chain in Telegram groups.
 
 ### Statistics
-- 480k+ games
-- 180k+ players
-- 43k+ groups
+- 500k+ games
+- 200k+ players
+- 40k+ groups
 
 ### Telegram Links
 - [On9 Word Chain Bot](https://t.me/on9wordchainbot) (Live Version)
@@ -33,7 +33,7 @@ PostgreSQL 11+ \
 > With privacy mode on, the bot will not receive players' answers unless they reply to the bot.
 
 ### Configuration
-Create `config.json` in the format described in [config_format.json](config_format.json).
+Rename [config_format.json](config_format.json) to `config.json` and edit the constants.
 
 Constants:
 - `TOKEN`*: A Telegram bot token.
@@ -49,8 +49,8 @@ Constants:
 - `VIP`: A list of Telegram user ids of VIPs.
 - `VIP_GROUP`: A list of Telegram group ids of VIP groups.
 
-\*: Obtained by contacting [BotFather](https://t.me/BotFather). \
-\#: Optional if the payment commands are removed.
+\*: Obtained via [BotFather](https://t.me/BotFather). \
+\#: Optional if the payment commands are commented out.
     Bot currently uses Stripe, other payment providers may not be supported. \
 ^: Set them to the same throwaway group if you do not need related features.
 

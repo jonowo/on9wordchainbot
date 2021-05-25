@@ -80,13 +80,13 @@ class ClassicGame:
         self.used_words = set()
 
     def user_in_game(self, user_id: int) -> bool:
-        for p in self.players:
-            if p.user_id == user_id:
-                return True
-        return False
+        return any(p.user_id == user_id for p in self.players)
 
     async def send_message(self, *args: Any, **kwargs: Any) -> types.Message:
-        return await bot.send_message(self.group_id, *args, disable_web_page_preview=True, **kwargs)
+        return await bot.send_message(
+            self.group_id, *args, disable_web_page_preview=True,
+            allow_sending_without_reply=True, **kwargs
+        )
 
     @cached(ttl=15)
     async def is_admin(self, user_id: int) -> bool:
@@ -134,10 +134,7 @@ class ClassicGame:
         if self.user_in_game(user.id):
             return
 
-        if user.id == on9bot.id:
-            player = Player(vp=True)
-        else:
-            player = Player(user)
+        player = Player(vp=True) if user.id == on9bot.id else Player(user)
         self.players.append(player)
         if self.state == GameState.RUNNING:
             self.players_in_game.append(player)
@@ -390,17 +387,26 @@ class ClassicGame:
 
         # Check if answer is invalid
         if not word.startswith(self.current_word[-1]):
-            await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.")
+            await message.reply(
+                f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.",
+                allow_sending_without_reply=True
+            )
             return
         if not isinstance(self, EliminationGame):  # No minimum letters limit for elimination game modes
             if len(word) < self.min_letters_limit:
-                await message.reply(f"_{word.capitalize()}_ has less than {self.min_letters_limit} letters.")
+                await message.reply(
+                    f"_{word.capitalize()}_ has less than {self.min_letters_limit} letters.",
+                    allow_sending_without_reply=True
+                )
                 return
         if word in self.used_words:
-            await message.reply(f"_{word.capitalize()}_ has been used.")
+            await message.reply(f"_{word.capitalize()}_ has been used.", allow_sending_without_reply=True)
             return
         if not check_word_existence(word):
-            await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
+            await message.reply(
+                f"_{word.capitalize()}_ is not in my list of words.",
+                allow_sending_without_reply=True
+            )
             return
         if not await self.additional_answer_checkers(word, message):
             return
@@ -459,8 +465,11 @@ class ClassicGame:
         self.start_time = datetime.now().replace(microsecond=0)
 
         await self.send_message(
-            f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
-            "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+            (
+                f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+                "Turn order:\n"
+                + "\n".join(p.mention for p in self.players_in_game)
+            ),
             parse_mode=types.ParseMode.HTML,
         )
 
@@ -702,9 +711,8 @@ class ChaosGame(ClassicGame):
             # Move player who just answered to the end of queue
             self.players_in_game.append(self.players_in_game.pop(0))
 
-            # Choose random player excluding the one who just answered and move to the start of queue
+            # Choose random player excluding the one who just answered
             player = self.players_in_game.pop(random.randint(0, len(self.players_in_game) - 2))
-            self.players_in_game.insert(0, player)
         else:
             self.time_left -= 1
             if self.time_left > 0:
@@ -722,10 +730,11 @@ class ChaosGame(ClassicGame):
                 await self.handle_game_end()
                 return True  # Game has ended
 
-            # Choose random player and move to the start of queue
+            # Choose random player
             player = self.players_in_game.pop(random.randint(0, len(self.players_in_game) - 1))
-            self.players_in_game.insert(0, player)
 
+        # Move player to start of queue
+        self.players_in_game.insert(0, player)
         await self.send_turn_message()
         return False  # Game is still ongoing
 
@@ -762,8 +771,11 @@ class ChosenFirstLetterGame(ClassicGame):
         self.start_time = datetime.now().replace(microsecond=0)
 
         await self.send_message(
-            f"The chosen first letter is <i>{self.current_word.upper()}</i>.\n\n"
-            "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+            (
+                f"The chosen first letter is <i>{self.current_word.upper()}</i>.\n\n"
+                "Turn order:\n"
+                + "\n".join(p.mention for p in self.players_in_game)
+            ),
             parse_mode=types.ParseMode.HTML,
         )
 
@@ -811,7 +823,8 @@ class BannedLettersGame(ClassicGame):
         if used_banned_letters:
             await message.reply(
                 f"_{word.capitalize()}_ contains banned letters "
-                f"({', '.join(c.upper() for c in used_banned_letters)})."
+                f"({', '.join(c.upper() for c in used_banned_letters)}).",
+                allow_sending_without_reply=True
             )
             return False
         return True
@@ -841,9 +854,12 @@ class BannedLettersGame(ClassicGame):
         self.start_time = datetime.now().replace(microsecond=0)
 
         await self.send_message(
-            f"The first word is <i>{self.current_word.capitalize()}</i>.\n"
-            f"Banned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>\n\n"
-            "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+            (
+                f"The first word is <i>{self.current_word.capitalize()}</i>.\n"
+                f"Banned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>\n\n"
+                "Turn order:\n"
+                + "\n".join(p.mention for p in self.players_in_game)
+            ),
             parse_mode=types.ParseMode.HTML,
         )
 
@@ -889,7 +905,10 @@ class RequiredLetterGame(ClassicGame):
 
     async def additional_answer_checkers(self, word: str, message: types.Message) -> bool:
         if self.required_letter not in word:
-            await message.reply(f"_{word.capitalize()}_ does not include _{self.required_letter}_.")
+            await message.reply(
+                f"_{word.capitalize()}_ does not include _{self.required_letter.upper()}_.",
+                allow_sending_without_reply=True
+            )
             return False
         return True
 
@@ -910,8 +929,11 @@ class RequiredLetterGame(ClassicGame):
         self.start_time = datetime.now().replace(microsecond=0)
 
         await self.send_message(
-            f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
-            "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game]),
+            (
+                f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
+                "Turn order:\n"
+                + "\n".join(p.mention for p in self.players_in_game)
+            ),
             parse_mode=types.ParseMode.HTML,
         )
 
@@ -1028,10 +1050,12 @@ class EliminationGame(ClassicGame):
         await self.send_message(
             (
                 f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
-                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game])
+                "Turn order:\n"
+                + "\n".join(p.mention for p in self.players_in_game)
             ),
             parse_mode=types.ParseMode.HTML,
         )
+
         await self.handle_round_start()
 
     async def running_phase_tick(self) -> bool:
@@ -1157,17 +1181,26 @@ class MixedEliminationGame(EliminationGame):
         # Starting letter
         if self.game_mode is ChosenFirstLetterGame:
             if not word.startswith(self.current_word[0]):
-                await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[0].upper()}_.")
+                await message.reply(
+                    f"_{word.capitalize()}_ does not start with _{self.current_word[0].upper()}_.",
+                    allow_sending_without_reply=True
+                )
                 return
         elif not word.startswith(self.current_word[-1]):
-            await message.reply(f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.")
+            await message.reply(
+                f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.",
+                allow_sending_without_reply=True
+            )
             return
 
         if word in self.used_words:
-            await message.reply(f"_{word.capitalize()}_ has been used.")
+            await message.reply(f"_{word.capitalize()}_ has been used.", allow_sending_without_reply=True)
             return
         if not check_word_existence(word):
-            await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
+            await message.reply(
+                f"_{word.capitalize()}_ is not in my list of words.",
+                allow_sending_without_reply=True
+            )
             return
         if not await self.additional_answer_checkers(word, message):
             return
@@ -1203,7 +1236,8 @@ class MixedEliminationGame(EliminationGame):
         await self.send_message(
             (
                 f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
-                "Turn order:\n" + "\n".join([p.mention for p in self.players_in_game])
+                "Turn order:\n"
+                + "\n".join(p.mention for p in self.players_in_game)
             ),
             parse_mode=types.ParseMode.HTML,
         )
