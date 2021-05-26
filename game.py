@@ -596,8 +596,10 @@ class ClassicGame:
             await asyncio.sleep(1)
             if timer != self.time_left and timer >= 0:
                 return  # Timer not stuck
+            if self.state == GameState.KILLGAME or self.group_id not in GAMES:
+                return  # Game already killed
 
-        await send_admin_group(f"Prolonged stale/negative timer detected in group `{self.group_id}`. Game Terminated.")
+        await send_admin_group(f"Prolonged stale/negative timer detected in group `{self.group_id}`. Game terminated.")
         try:
             await self.send_message("Game timer is malfunctioning. Game terminated.")
         except:
