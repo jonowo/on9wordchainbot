@@ -8,7 +8,7 @@ On9 Word Chain Bot hosts games of word chain in Telegram groups.
 ### Statistics
 - 500k+ games
 - 200k+ players
-- 40k+ groups
+- 50k+ groups
 
 ### Telegram Links
 - [On9 Word Chain Bot](https://t.me/on9wordchainbot) (Live Version)
@@ -16,7 +16,6 @@ On9 Word Chain Bot hosts games of word chain in Telegram groups.
 - [Word Additions Channel](https://t.me/on9wcwa)
 
 ### Roadmap
-- Module restructure
 - Add support for other languages in ClassicGame
 - i18n for text strings
 
@@ -39,22 +38,19 @@ Rename [config_format.json](config_format.json) to `config.json` and edit the fo
 - `DB_URI`: A [PostgresSQL database URI](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
 - `PROVIDER_TOKEN`*#: A Telegram payment provider token.
 - `OWNER_ID`: Telegram user id of the bot owner.
-- `ADMIN_GROUP_ID`^: Telegram group id of the bot admin group. Error messages and word requests are sent here.
+- `ADMIN_GROUP_ID`^: Telegram group id of the bot admin group. Error messages and word addition requests are sent here.
 - `OFFICIAL_GROUP_ID`^: Telegram group id of the official group of the bot.
 - `WORD_ADDITION_CHANNEL_ID`^: Telegram channel id of the channel to announce word additions.
 - `VIP`: A list of Telegram user ids designated as VIPs.
 - `VIP_GROUP`: A list of Telegram group ids designated as VIP groups.
 
 \*: Obtained via [BotFather](https://t.me/BotFather). \
-\#: Optional if the payment commands are commented out.
-    Bot currently uses Stripe, other payment providers may not be supported. \
-^: Set to the same throwaway group if their features are not used.
-
-Make sure all constants are valid to prevent errors.
+\#: Optional if payment-related functions are commented out. \
+^: Set to the same throwaway group if these features are not used.
 
 ### Table Creation
 Create the required tables in your PostgreSQL database by running [init.sql](init.sql).
 
 ### Deployment
-Install dependencies with `pip install -r requirements.txt`. \
-Run `python main.py`.
+Install and update dependencies with `pip install -U -r requirements.txt`. \
+Run `python -m on9wordchainbot`.

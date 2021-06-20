@@ -1,5 +1,5 @@
 config.json
 config_beta.json
 .idea/
-.vscode/
-__pycache__/
+.mypy_cache/
+**/__pycache__/

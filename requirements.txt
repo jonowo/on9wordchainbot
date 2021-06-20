@@ -1,9 +1,7 @@
 aiocache
-aiodns
 aiofiles
 aiogram
-aiohttp
+aiohttp[speedups]
 asyncpg
-cchardet
 matplotlib
 pillow
