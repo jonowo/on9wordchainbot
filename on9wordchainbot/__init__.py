@@ -9,7 +9,6 @@ from aiogram import Bot, types, Dispatcher
 
 from .constants import DB_URI, TOKEN, ON9BOT_TOKEN
 from .filters import filters
-from .words import Words
 
 if TYPE_CHECKING:
     from .models import ClassicGame
@@ -42,7 +41,6 @@ async def init() -> None:
     global pool
     logger.info("Connecting to database")
     pool = await asyncpg.create_pool(DB_URI, loop=loop)
-    await Words.update()
 
 
 loop.run_until_complete(init())

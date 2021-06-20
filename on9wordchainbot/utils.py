@@ -16,44 +16,37 @@ def is_word(s: str) -> bool:
 
 
 def check_word_existence(word: str) -> bool:
-    return word in Words.set[word[0]]
+    return word in Words.dawg
 
 
 def filter_words(
     min_len: int = 1,
-    starting_letter: Optional[str] = None,
-    banned_letters: Optional[List[str]] = None,
+    prefix: Optional[str] = None,
     required_letter: Optional[str] = None,
+    banned_letters: Optional[List[str]] = None,
     exclude_words: Optional[Set[str]] = None,
 ) -> List[str]:
-    words = Words.map[starting_letter] if starting_letter else Words.list
-
-    def f(word):  # Filter
-        if len(word) < min_len:
-            return False
-        if banned_letters and any(i in word for i in banned_letters):
-            return False
-        if required_letter and required_letter not in word:
-            return False
-        if exclude_words and word in exclude_words:
-            return False
-        return True
-
-    return [w for w in words if f(w)]
+    words = Words.dawg.keys(prefix) if prefix else Words.dawg.keys()
+    if min_len > 1:
+        words = [w for w in words if len(w) >= min_len]
+    if required_letter:
+        words = [w for w in words if required_letter in w]
+    if banned_letters:
+        words = [w for w in words if all(i not in w for i in banned_letters)]
+    if exclude_words:
+        words = [w for w in words if w not in exclude_words]
+    return words
 
 
 def get_random_word(
     min_len: int = 1,
-    starting_letter: Optional[str] = None,
-    banned_letters: Optional[List[str]] = None,
+    prefix: Optional[str] = None,
     required_letter: Optional[str] = None,
+    banned_letters: Optional[List[str]] = None,
     exclude_words: Optional[Set[str]] = None,
 ) -> Optional[str]:
-    words = filter_words(min_len, starting_letter, banned_letters, required_letter, exclude_words)
-    if words:
-        return random.choice(words)
-    else:
-        return None
+    words = filter_words(min_len, prefix, required_letter, banned_letters, exclude_words)
+    return random.choice(words) if words else None
 
 
 async def send_admin_group(*args: Any, **kwargs: Any) -> types.Message:

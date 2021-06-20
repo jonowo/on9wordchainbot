@@ -4,11 +4,21 @@ import time
 from decimal import getcontext, ROUND_HALF_UP
 
 from aiogram import executor
+from periodic import Periodic
 
 from on9wordchainbot import loop, dp, session, pool
+from on9wordchainbot.words import Words
 
 random.seed(time.time())
 getcontext().rounding = ROUND_HALF_UP
+
+
+async def on_startup(_) -> None:
+    await Words.update()
+
+    # Update word list every 3 hours
+    task = Periodic(3 * 60 * 60, Words.update)
+    await task.start()
 
 
 async def on_shutdown(_) -> None:
@@ -16,7 +26,9 @@ async def on_shutdown(_) -> None:
 
 
 def main() -> None:
-    executor.start_polling(dp, loop=loop, on_shutdown=on_shutdown, skip_updates=True)
+    executor.start_polling(
+        dp, loop=loop, on_startup=on_startup, on_shutdown=on_shutdown, skip_updates=True
+    )
 
 
 if __name__ == "__main__":

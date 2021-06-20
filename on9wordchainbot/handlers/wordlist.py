@@ -96,7 +96,7 @@ async def cmd_reqaddword(message: types.Message) -> None:
         text += f"{', '.join(rejected)} {'was' if len(rejected) == 1 else 'were'} rejected.\n"
     for word, reason in rejected_with_reason:
         text += f"{word} was rejected. Reason: {reason}.\n"
-    await message.reply(text.rstrip(), allow_sending_without_reply=True)
+    await message.reply(text, allow_sending_without_reply=True)
 
 
 @dp.message_handler(is_owner=True, commands=["addword", "addwords"])
@@ -137,7 +137,7 @@ async def cmd_addwords(message: types.Message) -> None:
         text += f"{', '.join(rejected)} {'was' if len(rejected) == 1 else 'were'} rejected.\n"
     for word, reason in rejected_with_reason:
         text += f"{word} was rejected. Reason: {reason}.\n"
-    msg = await message.reply(text.rstrip(), allow_sending_without_reply=True)
+    msg = await message.reply(text, allow_sending_without_reply=True)
 
     if not words_to_add:
         return

@@ -17,6 +17,13 @@ class ClassicGame:
     name = "classic game"
     command = "startclassic"
 
+    __slots__ = (
+        "group_id", "players", "players_in_game", "state", "start_time", "end_time",
+        "extended_user_ids", "min_players", "max_players", "time_left", "time_limit",
+        "min_letters_limit", "current_word", "longest_word", "longest_word_sender_id",
+        "answered", "accepting_answers", "turns", "used_words"
+    )
+
     def __init__(self, group_id: int) -> None:
         self.group_id = group_id
         self.players: List[Player] = []
@@ -308,7 +315,7 @@ class ClassicGame:
     def get_random_valid_answer(self) -> Optional[str]:
         return get_random_word(
             min_len=self.min_letters_limit,
-            starting_letter=self.current_word[-1],
+            prefix=self.current_word[-1],
             exclude_words=self.used_words
         )
 
@@ -415,7 +422,7 @@ class ClassicGame:
                     f"*{self.min_letters_limit - GameSettings.WORD_LENGTH_LIMIT_INCREASE_PER_LIMIT_CHANGE}* "
                     f"to *{self.min_letters_limit}*.\n"
                 )
-        await self.send_message(text.rstrip())
+        await self.send_message(text)
 
     async def running_initialization(self) -> None:
         # Random starting word

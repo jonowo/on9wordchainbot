@@ -7,6 +7,10 @@ from ..utils import has_star
 
 
 class Player:
+    __slots__ = (
+        "_username", "_name", "user_id", "is_vp", "word_count", "letter_count", "longest_word", "score"
+    )
+
     def __init__(self, user: types.User) -> None:
         self._username = user.username
         self._name = user.full_name

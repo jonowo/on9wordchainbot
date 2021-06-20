@@ -11,7 +11,8 @@ from .donation import send_donate_invoice
 from .. import bot, dp, pool, GlobalState
 from ..constants import VIP, GameState, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID
 from ..models import GAME_MODES
-from ..utils import send_admin_group, amt_donated, filter_words, ADD_TO_GROUP_KEYBOARD, is_word
+from ..utils import send_admin_group, amt_donated, ADD_TO_GROUP_KEYBOARD, is_word
+from ..words import Words
 
 
 @dp.message_handler(CommandStart(), ChatTypeFilter([types.ChatType.PRIVATE]))
@@ -132,23 +133,23 @@ async def inline_handler(inline_query: types.InlineQuery):
                     input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯"),
                 )
             ],
-            is_personal=True,
+            is_personal=True
         )
         return
 
     res = []
-    for i in filter_words(starting_letter=text[0]):
-        if i.startswith(text):
-            i = i.capitalize()
-            res.append(
-                types.InlineQueryResultArticle(
-                    id=str(uuid4()),
-                    title=i,
-                    input_message_content=types.InputTextMessageContent(i),
-                )
+    for word in Words.dawg.iterkeys(text):
+        word = word.capitalize()
+        res.append(
+            types.InlineQueryResultArticle(
+                id=str(uuid4()),
+                title=word,
+                input_message_content=types.InputTextMessageContent(word)
             )
-            if len(res) == 50:  # Max 50 results
-                break
+        )
+        if len(res) == 50:  # Max 50 results
+            break
+
     if not res:  # No results
         res.append(
             types.InlineQueryResultArticle(
@@ -158,6 +159,7 @@ async def inline_handler(inline_query: types.InlineQuery):
                 input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯"),
             )
         )
+
     await inline_query.answer(res, is_personal=True)
 
 

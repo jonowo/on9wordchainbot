@@ -10,6 +10,7 @@ from aiogram.utils.markdown import quote_html
 from .. import bot, dp, GlobalState
 from ..constants import GameState
 from ..utils import inline_keyboard_from_button, send_private_only_message
+from ..words import Words
 
 
 @dp.message_handler(CommandStart("help"), ChatTypeFilter([types.ChatType.PRIVATE]))
@@ -115,6 +116,7 @@ async def cmd_runinfo(message: types.Message) -> None:
         (
             f"Build time: `{build_time_str}`\n"
             f"Uptime: `{uptime.days}.{str(uptime).rsplit(maxsplit=1)[-1]}`\n"
+            f"Words in dictionary: `{Words.count}`\n"
             f"Total games: `{len(GlobalState.games)}`\n"
             f"Running games: `{len([g for g in GlobalState.games.values() if g.state == GameState.RUNNING])}`\n"
             f"Players: `{sum(len(g.players) for g in GlobalState.games.values())}`"

@@ -2,6 +2,8 @@ aiocache
 aiofiles
 aiogram
 aiohttp[speedups]
+asyncio-periodic
 asyncpg
 matplotlib
 pillow
+DAWG

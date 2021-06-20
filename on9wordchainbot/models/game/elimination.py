@@ -13,6 +13,8 @@ class EliminationGame(ClassicGame):
     name = "elimination game"
     command = "startelim"
 
+    __slots__ = ("round", "turns_until_elimination", "exceeded_score_limit")
+
     def __init__(self, group_id: int) -> None:
         super().__init__(group_id)
 
@@ -32,6 +34,7 @@ class EliminationGame(ClassicGame):
 
     async def forcejoin(self, message: types.Message) -> None:
         # Joining in the middle of an elimination game puts one at a disadvantage since points are cumulative
+        # So forcejoin is only allowed in joining phase
         if self.state == GameState.JOINING:
             await super().forcejoin(message)
 
@@ -76,7 +79,7 @@ class EliminationGame(ClassicGame):
             # Player not in first or last 5 places, show player in middle
             for i, p in enumerate(players[:5], start=1):
                 text += f"{i}. {p.name}: {p.score}\n"
-            # Prevent awkward ellipses if player is 6th place from top or bottom
+            # Prevent unnecessary ellipses if player is 6th place from top or bottom
             if players[5] is not show_player:
                 text += "...\n"
             text += f"> {players.index(show_player) + 1}. {show_player.name}: {show_player.score}\n"

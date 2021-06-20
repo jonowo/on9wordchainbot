@@ -13,6 +13,8 @@ class BannedLettersGame(ClassicGame):
     name = "banned letters game"
     command = "startbl"
 
+    __slots__ = ("banned_letters",)
+
     def __init__(self, group_id: int) -> None:
         super().__init__(group_id)
         self.banned_letters: List[str] = []
@@ -43,9 +45,9 @@ class BannedLettersGame(ClassicGame):
     def get_random_valid_answer(self) -> Optional[str]:
         return get_random_word(
             min_len=self.min_letters_limit,
-            starting_letter=self.current_word[-1],
+            prefix=self.current_word[-1],
             banned_letters=self.banned_letters,
-            exclude_words=self.used_words,
+            exclude_words=self.used_words
         )
 
     async def additional_answer_checkers(self, word: str, message: types.Message) -> bool:

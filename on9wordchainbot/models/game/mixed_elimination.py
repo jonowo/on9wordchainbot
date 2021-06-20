@@ -27,6 +27,8 @@ class MixedEliminationGame(EliminationGame):
         RequiredLetterGame,
     ]
 
+    __slots__ = ("game_mode", "banned_letters", "required_letter")
+
     def __init__(self, group_id):
         super().__init__(group_id)
         self.game_mode = None
@@ -118,7 +120,7 @@ class MixedEliminationGame(EliminationGame):
             self.current_word = get_random_word(banned_letters=self.banned_letters)
         elif self.game_mode is ChosenFirstLetterGame:
             # Ensure uniform probability of each letter as the starting letter
-            self.current_word = get_random_word(starting_letter=random.choice(ascii_lowercase))
+            self.current_word = get_random_word(prefix=random.choice(ascii_lowercase))
         else:
             self.current_word = get_random_word()
         if self.game_mode is RequiredLetterGame:
