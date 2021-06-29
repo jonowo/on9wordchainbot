@@ -1,10 +1,12 @@
 import asyncio
+import traceback
 from uuid import uuid4
 
 from aiogram import types
 from aiogram.dispatcher.filters import CommandStart, ChatTypeFilter
 from aiogram.utils.exceptions import (
-    TelegramAPIError, BadRequest, MigrateToChat, BotKicked, BotBlocked, InvalidQueryID, Unauthorized
+    TelegramAPIError, BadRequest, MigrateToChat, BotKicked, BotBlocked,
+    CantInitiateConversation, InvalidQueryID, Unauthorized, RetryAfter
 )
 
 from .donation import send_donate_invoice
@@ -179,11 +181,12 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
             asyncio.create_task(GlobalState.games[group_id].scan_for_stale_timer())
 
     # Unimportant errors
-    if isinstance(error, (BotKicked, BotBlocked, InvalidQueryID)):
+    if isinstance(error, (BotKicked, BotBlocked, CantInitiateConversation, InvalidQueryID)):
         return
     if isinstance(error, BadRequest) and str(error) in (
         "Have no rights to send a message",
         "Not enough rights to send text messages to the chat",
+        "Group chat was deactivated",
         "Chat_write_forbidden",
         "Channel_private"
     ):
@@ -219,9 +222,16 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
         return
 
     send_admin_msg = await send_admin_group(
-        f"`{error.__class__.__name__} @ "
-        f"{group_id if update.message and update.message.chat else 'idk'}`:\n"
-        f"`{str(error)}`",
+        (
+            f"`{error.__class__.__name__} @ "
+            f"{group_id if update.message and update.message.chat else 'idk'}`:\n"
+            f"`{str(error)}`"
+        ) if isinstance(error, RetryAfter) else (
+            "<pre>"
+            + "".join(traceback.format_exception(etype=type(error), value=error, tb=error.__traceback__))
+            + f"@ {group_id if update.message and update.message.chat else 'idk'}</pre>"
+        ),
+        parse_mode=types.ParseMode.HTML
     )
     if not update.message or not update.message.chat:
         return

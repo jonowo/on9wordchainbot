@@ -481,7 +481,7 @@ class ClassicGame:
         text += f"Game length: <code>{game_len_str}</code>"
         await self.send_message(text, parse_mode=types.ParseMode.HTML)
 
-        del GlobalState.games[self.group_id]
+        GlobalState.games.pop(self.group_id, None)
 
     async def update_db(self) -> None:
         async with pool.acquire() as conn:
@@ -616,7 +616,7 @@ class ClassicGame:
                         return
                 elif self.state == GameState.KILLGAME:
                     await self.send_message("Game ended forcibly.")
-                    del GlobalState.games[self.group_id]
+                    GlobalState.games.pop(self.group_id, None)
                     return
         except Exception as e:
             GlobalState.games.pop(self.group_id, None)

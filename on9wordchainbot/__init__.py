@@ -13,7 +13,12 @@ from .filters import filters
 if TYPE_CHECKING:
     from .models import ClassicGame
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+try:
+    import coloredlogs  # pip install coloredlogs
+    coloredlogs.install(fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+except ImportError:
+    logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 try:

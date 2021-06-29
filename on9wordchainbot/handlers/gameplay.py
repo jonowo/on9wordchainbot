@@ -56,7 +56,7 @@ async def start_game(message: types.Message, game_type: Type[ClassicGame]) -> No
 
     game = game_type(message.chat.id)
     GlobalState.games[group_id] = game
-    await game.main_loop(message)
+    asyncio.create_task(game.main_loop(message))
 
 
 @dp.message_handler(RegexpCommandsFilter([r"^/(start[a-z]+)"]))
