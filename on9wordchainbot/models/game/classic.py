@@ -322,7 +322,7 @@ class ClassicGame:
     async def vp_answer(self) -> None:
         # Wait before answering to prevent exceeding 20 msg/min message limit
         # Also simulate thinking/input time like human players, wowzers
-        await asyncio.sleep(random.uniform(2, 5))
+        await asyncio.sleep(random.uniform(5, 10))
 
         word = self.get_random_valid_answer()
 

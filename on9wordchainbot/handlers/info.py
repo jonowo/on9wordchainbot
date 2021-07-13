@@ -36,7 +36,7 @@ async def cmd_help(message: types.Message) -> None:
             "in *English / Cantonese* if you have issues with the bot.\n"
             "Official Group: @on9wordchain\n"
             "Word Additions Channel (with status updates): @on9wcwa\n"
-            "Source Code: [Tr-Jono/on9wordchainbot](https://github.com/Tr-Jono/on9wordchainbot)\n"
+            "Source Code: [jonowo/on9wordchainbot](https://github.com/jonowo/on9wordchainbot)\n"
             "Epic icon designed by [Adri](tg://user?id=303527690)"
         ),
         disable_web_page_preview=True,

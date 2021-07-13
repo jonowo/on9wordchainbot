@@ -223,9 +223,9 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
 
     send_admin_msg = await send_admin_group(
         (
-            f"`{error.__class__.__name__} @ "
-            f"{group_id if update.message and update.message.chat else 'idk'}`:\n"
-            f"`{str(error)}`"
+            f"<code>{error.__class__.__name__} @ "
+            f"{group_id if update.message and update.message.chat else 'idk'}</code>:\n"
+            f"<pre>{str(error)}</pre>"
         ) if isinstance(error, RetryAfter) else (
             "<pre>"
             + "".join(traceback.format_exception(etype=type(error), value=error, tb=error.__traceback__))
