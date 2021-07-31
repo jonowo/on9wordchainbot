@@ -1,16 +1,16 @@
 import asyncio
 import random
 from datetime import datetime
-from typing import Any, Optional, List, Set
+from typing import Any, List, Optional, Set
 
 from aiocache import cached
 from aiogram import types
 from aiogram.utils.exceptions import BadRequest
 
 from ..player import Player
-from ... import bot, on9bot, pool, GlobalState
+from ... import GlobalState, bot, on9bot, pool
 from ...constants import GameSettings, GameState, OWNER_ID
-from ...utils import get_random_word, send_admin_group, check_word_existence, ADD_ON9BOT_TO_GROUP_KEYBOARD
+from ...utils import ADD_ON9BOT_TO_GROUP_KEYBOARD, check_word_existence, get_random_word, send_admin_group
 
 
 class ClassicGame:
@@ -322,7 +322,7 @@ class ClassicGame:
     async def vp_answer(self) -> None:
         # Wait before answering to prevent exceeding 20 msg/min message limit
         # Also simulate thinking/input time like human players, wowzers
-        await asyncio.sleep(random.uniform(5, 10))
+        await asyncio.sleep(random.uniform(5, 8))
 
         word = self.get_random_valid_answer()
 
@@ -379,7 +379,6 @@ class ClassicGame:
     def post_turn_processing(self, word: str) -> None:
         # Prevent circular imports
         from .chosen_first_letter import ChosenFirstLetterGame
-        from .elimination import EliminationGame
 
         # Update attributes
         self.used_words.add(word)
@@ -391,14 +390,12 @@ class ClassicGame:
 
         self.players_in_game[0].word_count += 1
         self.players_in_game[0].letter_count += len(word)
-        if isinstance(self, EliminationGame):
-            self.players_in_game[0].score += min(len(word), GameSettings.ELIM_MAX_TURN_SCORE)
-            if len(word) > GameSettings.ELIM_MAX_TURN_SCORE:
-                self.exceeded_score_limit = True
+        # If both words have the same length, it will (probably) default to the first argument
+        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=len)
+
         if len(word) > len(self.longest_word):
             self.longest_word = word
             self.longest_word_sender_id = self.players_in_game[0].user_id
-        self.players_in_game[0].longest_word = max(word, self.players_in_game[0].longest_word, key=len)
 
         # Set per-turn attributes
         self.answered = True
@@ -495,13 +492,13 @@ class ClassicGame:
                 self.__class__.__name__,
                 self.players_in_game[0].user_id if self.players_in_game else None,
                 self.start_time,
-                self.end_time,
+                self.end_time
             )
             # Get game id
             game_id = await conn.fetchval(
                 "SELECT id FROM game WHERE group_id = $1 AND start_time = $2;",
                 self.group_id,
-                self.start_time,
+                self.start_time
             )
         for player in self.players:  # Update db players in parallel
             asyncio.create_task(self.update_db_player(game_id, player))
@@ -527,7 +524,7 @@ class ClassicGame:
                     player.word_count,
                     player.letter_count,
                     player.longest_word or None,
-                    player.user_id,
+                    player.user_id
                 )
             else:  # New player, create player in db
                 await conn.execute(
@@ -538,7 +535,7 @@ class ClassicGame:
                     int(player in self.players_in_game),  # No winner in some game modes
                     player.word_count,
                     player.letter_count,
-                    player.longest_word or None,
+                    player.longest_word or None
                 )
 
             # Create gameplayer in db
@@ -552,7 +549,7 @@ class ClassicGame:
                 player in self.players_in_game,
                 player.word_count,
                 player.letter_count,
-                player.longest_word or None,
+                player.longest_word or None
             )
 
     async def scan_for_stale_timer(self) -> None:

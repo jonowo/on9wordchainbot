@@ -2,7 +2,7 @@ import asyncio
 import os
 import time
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import aiofiles
 import aiofiles.os
@@ -130,7 +130,7 @@ async def cmd_trends(message: types.Message) -> None:
                         WHERE start_time::DATE >= $1
                         GROUP BY d
                         ORDER BY d;""",
-                    today - timedelta(days=days - 1),
+                    today - timedelta(days=days - 1)
                 )
             )
 
@@ -145,7 +145,7 @@ async def cmd_trends(message: types.Message) -> None:
                         WHERE game.start_time::DATE >= $1
                         GROUP BY d
                         ORDER BY d;""",
-                    today - timedelta(days=days - 1),
+                    today - timedelta(days=days - 1)
                 )
             )
 
@@ -159,7 +159,7 @@ async def cmd_trends(message: types.Message) -> None:
                         WHERE game.start_time::DATE >= $1
                         GROUP BY d
                         ORDER BY d;""",
-                    today - timedelta(days=days - 1),
+                    today - timedelta(days=days - 1)
                 )
             )
 
@@ -182,7 +182,7 @@ async def cmd_trends(message: types.Message) -> None:
                                 ) dg
                         ) ds
                         WHERE d >= $1;""",
-                    today - timedelta(days=days - 1),
+                    today - timedelta(days=days - 1)
                 )
             )
 
@@ -206,7 +206,7 @@ async def cmd_trends(message: types.Message) -> None:
                                 ) du
                         ) ds
                         WHERE d >= $1;""",
-                    today - timedelta(days=days - 1),
+                    today - timedelta(days=days - 1)
                 )
             )
 
@@ -219,7 +219,7 @@ async def cmd_trends(message: types.Message) -> None:
                     WHERE start_time::DATE >= $1
                     GROUP BY game_mode
                     ORDER BY count;""",
-                today - timedelta(days=days - 1),
+                today - timedelta(days=days - 1)
             )
 
     # Execute multiple db queries at once for speed
@@ -310,7 +310,17 @@ async def cmd_trends(message: types.Message) -> None:
 
     plt.subplot(234)
     labels = [i[1] for i in game_mode_play_cnt]
-    colors = ["dark maroon", "dark peach", "orange", "leather", "mustard", "teal", "french blue", "booger"]
+    colors = [
+        "dark maroon",
+        "dark peach",
+        "orange",
+        "leather",
+        "mustard",
+        "teal",
+        "french blue",
+        "booger",
+        "pink"
+    ]
     total_games = sum(i[0] for i in game_mode_play_cnt)
     slices, text = plt.pie(
         [i[0] for i in game_mode_play_cnt],
@@ -318,7 +328,7 @@ async def cmd_trends(message: types.Message) -> None:
             f"{i[0] / total_games:.1%} ({i[0]})" if i[0] / total_games >= 0.03 else ""
             for i in game_mode_play_cnt
         ],
-        colors=["xkcd:" + c for c in colors[8 - len(game_mode_play_cnt):]],
+        colors=["xkcd:" + c for c in colors[len(colors) - len(game_mode_play_cnt):]],
         startangle=90
     )
     plt.legend(slices, labels, title="Game Modes Played", fontsize="x-small", loc="best")

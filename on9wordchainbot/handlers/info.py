@@ -3,11 +3,11 @@ import time
 from datetime import datetime
 
 from aiogram import types
-from aiogram.dispatcher.filters import CommandStart, CommandHelp, ChatTypeFilter
+from aiogram.dispatcher.filters import ChatTypeFilter, CommandHelp, CommandStart
 from aiogram.utils.deep_linking import get_start_link
 from aiogram.utils.markdown import quote_html
 
-from .. import bot, dp, GlobalState
+from .. import GlobalState, bot, dp
 from ..constants import GameState
 from ..utils import inline_keyboard_from_button, send_private_only_message
 from ..words import Words
@@ -55,6 +55,7 @@ async def cmd_gameinfo(message: types.Message) -> None:
             "/starthard - Hard mode game\n"
             "/startchaos - Chaos game (random turn order)\n"
             "/startcfl - Chosen first letter game\n"
+            "/startrfl - Random first letter game\n"
             "/startbl - Banned letters game\n"
             "/startrl - Required letter game\n\n"
             "/startelim - Elimination game\n"

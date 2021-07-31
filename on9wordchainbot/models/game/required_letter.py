@@ -32,7 +32,7 @@ class RequiredLetterGame(ClassicGame):
                 f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
                 f"Total words: {self.turns}"
             ),
-            parse_mode=types.ParseMode.HTML,
+            parse_mode=types.ParseMode.HTML
         )
 
         # Reset per-turn attributes
@@ -82,5 +82,5 @@ class RequiredLetterGame(ClassicGame):
                 "Turn order:\n"
                 + "\n".join(p.mention for p in self.players_in_game)
             ),
-            parse_mode=types.ParseMode.HTML,
+            parse_mode=types.ParseMode.HTML
         )

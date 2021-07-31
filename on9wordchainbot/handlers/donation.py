@@ -4,14 +4,14 @@ from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 from aiogram import types
-from aiogram.dispatcher.filters import CommandStart, ChatTypeFilter
+from aiogram.dispatcher.filters import ChatTypeFilter, CommandStart
 from aiogram.types.message import ContentTypes
 from aiogram.utils.deep_linking import get_start_link
 from aiogram.utils.exceptions import BadRequest
 
 from .. import bot, dp, pool
 from ..constants import PROVIDER_TOKEN
-from ..utils import send_admin_group, inline_keyboard_from_button
+from ..utils import inline_keyboard_from_button, send_admin_group
 
 
 @dp.message_handler(commands="donate")
@@ -70,14 +70,14 @@ async def send_donate_msg(message: types.Message) -> None:
             inline_keyboard=[
                 [
                     types.InlineKeyboardButton("10 HKD", callback_data="donate:10"),
-                    types.InlineKeyboardButton("30 HKD", callback_data="donate:30"),
+                    types.InlineKeyboardButton("30 HKD", callback_data="donate:30")
                 ],
                 [
                     types.InlineKeyboardButton("50 HKD", callback_data="donate:50"),
-                    types.InlineKeyboardButton("100 HKD", callback_data="donate:100"),
-                ],
+                    types.InlineKeyboardButton("100 HKD", callback_data="donate:100")
+                ]
             ]
-        ),
+        )
     )
 
 
@@ -126,7 +126,7 @@ async def successful_payment_handler(message: types.Message) -> None:
             str(amt),
             dt,
             payment.telegram_payment_charge_id,
-            payment.provider_payment_charge_id,
+            payment.provider_payment_charge_id
         )
     asyncio.create_task(
         message.answer(

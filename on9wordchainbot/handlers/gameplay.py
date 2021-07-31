@@ -5,9 +5,9 @@ from typing import Type
 from aiogram import types
 from aiogram.dispatcher.filters import RegexpCommandsFilter
 
-from .. import on9bot, dp, GlobalState
-from ..constants import VIP_GROUP, VIP, GameState, GameSettings
-from ..models import ClassicGame, EliminationGame, MixedEliminationGame, GAME_MODES
+from .. import GlobalState, dp, on9bot
+from ..constants import GameSettings, GameState, VIP, VIP_GROUP
+from ..models import ClassicGame, EliminationGame, GAME_MODES, MixedEliminationGame
 from ..utils import amt_donated, send_groups_only_message
 
 

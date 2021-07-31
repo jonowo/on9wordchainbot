@@ -1,12 +1,12 @@
 import asyncio
 import random
 import time
-from decimal import getcontext, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, getcontext
 
 from aiogram import executor
 from periodic import Periodic
 
-from on9wordchainbot import loop, dp, session, pool
+from on9wordchainbot import dp, loop, pool, session
 from on9wordchainbot.words import Words
 
 random.seed(time.time())

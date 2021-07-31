@@ -1,13 +1,13 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Dict
+from typing import Dict, TYPE_CHECKING
 
 import aiohttp
 import asyncpg
-from aiogram import Bot, types, Dispatcher
+from aiogram import Bot, Dispatcher, types
 
-from .constants import DB_URI, TOKEN, ON9BOT_TOKEN
+from .constants import DB_URI, ON9BOT_TOKEN, TOKEN
 from .filters import filters
 
 if TYPE_CHECKING:
@@ -15,9 +15,10 @@ if TYPE_CHECKING:
 
 try:
     import coloredlogs  # pip install coloredlogs
-    coloredlogs.install(fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 except ImportError:
     logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+else:
+    coloredlogs.install(fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 

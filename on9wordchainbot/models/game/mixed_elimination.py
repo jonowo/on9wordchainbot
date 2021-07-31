@@ -9,7 +9,7 @@ from .chosen_first_letter import ChosenFirstLetterGame
 from .classic import ClassicGame
 from .elimination import EliminationGame
 from .required_letter import RequiredLetterGame
-from ...utils import get_random_word, check_word_existence
+from ...utils import check_word_existence, get_random_word
 
 
 class MixedEliminationGame(EliminationGame):
@@ -24,7 +24,7 @@ class MixedEliminationGame(EliminationGame):
         ClassicGame,
         ChosenFirstLetterGame,
         BannedLettersGame,
-        RequiredLetterGame,
+        RequiredLetterGame
     ]
 
     __slots__ = ("game_mode", "banned_letters", "required_letter")
@@ -133,7 +133,7 @@ class MixedEliminationGame(EliminationGame):
                 "Turn order:\n"
                 + "\n".join(p.mention for p in self.players_in_game)
             ),
-            parse_mode=types.ParseMode.HTML,
+            parse_mode=types.ParseMode.HTML
         )
 
         round_text = f"Round 1 is starting...\nMode: <b>{self.game_mode.name.capitalize()}</b>"

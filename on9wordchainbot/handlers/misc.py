@@ -3,17 +3,15 @@ import traceback
 from uuid import uuid4
 
 from aiogram import types
-from aiogram.dispatcher.filters import CommandStart, ChatTypeFilter
-from aiogram.utils.exceptions import (
-    TelegramAPIError, BadRequest, MigrateToChat, BotKicked, BotBlocked,
-    CantInitiateConversation, InvalidQueryID, Unauthorized, RetryAfter
-)
+from aiogram.dispatcher.filters import ChatTypeFilter, CommandStart
+from aiogram.utils.exceptions import (BadRequest, BotBlocked, BotKicked, CantInitiateConversation, InvalidQueryID,
+                                      MigrateToChat, RetryAfter, TelegramAPIError, Unauthorized)
 
 from .donation import send_donate_invoice
-from .. import bot, dp, pool, GlobalState
-from ..constants import VIP, GameState, ADMIN_GROUP_ID, OFFICIAL_GROUP_ID
+from .. import GlobalState, bot, dp, pool
+from ..constants import ADMIN_GROUP_ID, GameState, OFFICIAL_GROUP_ID, VIP
 from ..models import GAME_MODES
-from ..utils import send_admin_group, amt_donated, ADD_TO_GROUP_KEYBOARD, is_word
+from ..utils import ADD_TO_GROUP_KEYBOARD, amt_donated, is_word, send_admin_group
 from ..words import Words
 
 
@@ -132,7 +130,7 @@ async def inline_handler(inline_query: types.InlineQuery):
                     id=str(uuid4()),
                     title="A query can only consist of alphabets",
                     description="Try a different query",
-                    input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯"),
+                    input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯")
                 )
             ],
             is_personal=True
@@ -158,7 +156,7 @@ async def inline_handler(inline_query: types.InlineQuery):
                 id=str(uuid4()),
                 title="No results found",
                 description="Try a different query",
-                input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯"),
+                input_message_content=types.InputTextMessageContent(r"¯\\_(ツ)\_/¯")
             )
         )
 

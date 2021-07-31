@@ -5,6 +5,7 @@ from .classic import ClassicGame
 from .elimination import EliminationGame
 from .hard_mode import HardModeGame
 from .mixed_elimination import MixedEliminationGame
+from .random_first_letter import RandomFirstLetterGame
 from .required_letter import RequiredLetterGame
 
 GAME_MODES = [
@@ -12,6 +13,7 @@ GAME_MODES = [
     HardModeGame,
     ChaosGame,
     ChosenFirstLetterGame,
+    RandomFirstLetterGame,
     BannedLettersGame,
     RequiredLetterGame,
     EliminationGame,
@@ -23,6 +25,7 @@ __all__ = (
     "HardModeGame",
     "ChaosGame",
     "ChosenFirstLetterGame",
+    "RandomFirstLetterGame",
     "BannedLettersGame",
     "RequiredLetterGame",
     "EliminationGame",

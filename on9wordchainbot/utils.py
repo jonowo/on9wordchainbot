@@ -1,7 +1,7 @@
 import random
 from functools import wraps
 from string import ascii_lowercase
-from typing import List, Set, Any, Optional, Callable
+from typing import Any, Callable, List, Optional, Set
 
 from aiocache import cached
 from aiogram import types
@@ -24,7 +24,7 @@ def filter_words(
     prefix: Optional[str] = None,
     required_letter: Optional[str] = None,
     banned_letters: Optional[List[str]] = None,
-    exclude_words: Optional[Set[str]] = None,
+    exclude_words: Optional[Set[str]] = None
 ) -> List[str]:
     words = Words.dawg.keys(prefix) if prefix else Words.dawg.keys()
     if min_len > 1:
@@ -43,7 +43,7 @@ def get_random_word(
     prefix: Optional[str] = None,
     required_letter: Optional[str] = None,
     banned_letters: Optional[List[str]] = None,
-    exclude_words: Optional[Set[str]] = None,
+    exclude_words: Optional[Set[str]] = None
 ) -> Optional[str]:
     words = filter_words(min_len, prefix, required_letter, banned_letters, exclude_words)
     return random.choice(words) if words else None

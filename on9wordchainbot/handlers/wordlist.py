@@ -5,7 +5,7 @@ from aiogram import types
 
 from .. import bot, dp, pool
 from ..constants import WORD_ADDITION_CHANNEL_ID
-from ..utils import send_admin_group, check_word_existence, has_star, is_word
+from ..utils import check_word_existence, has_star, is_word, send_admin_group
 from ..words import Words
 
 
@@ -47,6 +47,7 @@ async def cmd_reqaddword(message: types.Message) -> None:
                 "- It is spelled correctly\n"
                 "- It is not a [proper noun](https://simple.wikipedia.org/wiki/Proper_noun) "
                 "(\u274c names)\n"
+                "  (existing proper nouns in the word list and nationalities are exempt)\n"
                 "Usage: `/reqaddword word1 word2 ...`"
             ),
             disable_web_page_preview=True,
@@ -82,7 +83,7 @@ async def cmd_reqaddword(message: types.Message) -> None:
                 message.from_user.get_mention(
                     name=message.from_user.full_name
                          + (" \u2b50\ufe0f" if await has_star(message.from_user.id) else ""),
-                    as_html=True,
+                    as_html=True
                 )
                 + " is requesting the addition of "
                 + ", ".join(["<i>" + w.capitalize() + "</i>" for w in words_to_add])
@@ -170,7 +171,7 @@ async def cmd_rejword(message: types.Message) -> None:
             await conn.execute(
                 "INSERT INTO wordlist (word, accepted, reason) VALUES ($1, false, $2)",
                 word,
-                reason.strip() or None,
+                reason.strip() or None
             )
 
     word = word.capitalize()

@@ -5,17 +5,16 @@
 
 On9 Word Chain Bot hosts games of word chain in Telegram groups.
 
-### Statistics
-- 500k+ games
-- 200k+ players
-- 50k+ groups
-
 ### Telegram Links
 - [On9 Word Chain Bot](https://t.me/on9wordchainbot) (Live Version)
 - [Official Group](https://t.me/on9wordchain)
 - [Word Additions Channel](https://t.me/on9wcwa)
 
 ### Roadmap
+- Make required letter game more balanced
+- Group leaderboard
+- Hyphenated words?
+- Switch from Markdown to HTML completely
 - Add support for other languages in ClassicGame
 - i18n for text strings
 
@@ -23,7 +22,7 @@ On9 Word Chain Bot hosts games of word chain in Telegram groups.
 
 ### Requirements
 Python 3.7+ \
-PostgreSQL 11+\
+PostgreSQL 11+ \
 2 Telegram bots
 
 > It is highly recommended that you turn off privacy mode for On9 Word Chain Bot via @BotFather,
