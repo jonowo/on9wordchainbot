@@ -2,4 +2,3 @@ config.json
 config_beta.json
 .idea/
 .mypy_cache/
-**/__pycache__/

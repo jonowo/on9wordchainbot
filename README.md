@@ -11,7 +11,7 @@ On9 Word Chain Bot hosts games of word chain in Telegram groups.
 - [Word Additions Channel](https://t.me/on9wcwa)
 
 ### Roadmap
-- Make required letter game more balanced
+- Make required letter game more reasonable
 - Group leaderboard
 - Hyphenated words?
 - Switch from Markdown to HTML completely

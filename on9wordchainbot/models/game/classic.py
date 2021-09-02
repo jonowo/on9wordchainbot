@@ -168,7 +168,7 @@ class ClassicGame:
             and not self.user_in_game(message.from_user.id)
             and not await self.is_admin(message.from_user.id)
         ):
-            await self.send_message("Imagine not being a player")
+            await self.send_message("Imagine not playing")
             return
 
         # Each player can only extend once and only for 30 seconds except admins
@@ -268,7 +268,6 @@ class ClassicGame:
         # Check if On9Bot has joined
         for i in range(len(self.players)):
             if self.players[i].is_vp:
-                vp = self.players.pop(i)
                 break
         else:
             return
@@ -279,7 +278,14 @@ class ClassicGame:
             and not self.user_in_game(message.from_user.id)
             and not await self.is_admin(message.from_user.id)
         ):
-            await self.send_message("Imagine not being a player")
+            await self.send_message("Imagine not playing")
+            return
+
+        for i in range(len(self.players)):
+            if self.players[i].is_vp:
+                vp = self.players.pop(i)
+                break
+        else:
             return
 
         await on9bot.send_message(self.group_id, "/flee@" + (await bot.me).username)

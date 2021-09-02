@@ -65,7 +65,10 @@ class BannedLettersGame(ClassicGame):
         self.banned_letters.clear()  # Mode may occur multiple times in mixed elimination
 
         # Set banned letters (maximum one vowel)
-        alphabets = list(ascii_lowercase)
+        if self.current_word:  # Mixed Elimination
+            alphabets = sorted(set(ascii_lowercase) - {self.current_word[-1]})
+        else:
+            alphabets = list(ascii_lowercase)
         for _ in range(random.randint(2, 4)):
             self.banned_letters.append(random.choice(alphabets))
             if self.banned_letters[-1] in "aeiou":
