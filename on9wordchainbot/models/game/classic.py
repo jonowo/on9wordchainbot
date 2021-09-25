@@ -21,7 +21,7 @@ class ClassicGame:
         "group_id", "players", "players_in_game", "state", "start_time", "end_time",
         "extended_user_ids", "min_players", "max_players", "time_left", "time_limit",
         "min_letters_limit", "current_word", "longest_word", "longest_word_sender_id",
-        "answered", "accepting_answers", "turns", "used_words"
+        "answered", "accepting_answers", "turns", "used_words", "join_lock"
     )
 
     def __init__(self, group_id: int) -> None:
@@ -50,6 +50,8 @@ class ClassicGame:
         self.turns = 0
         self.used_words: Set[str] = set()
 
+        self.join_lock = asyncio.Lock()  # Prevent same user / vp joining as multiple players
+
     def user_in_game(self, user_id: int) -> bool:
         return any(p.user_id == user_id for p in self.players)
 
@@ -65,98 +67,181 @@ class ClassicGame:
         return user.is_chat_admin()
 
     async def join(self, message: types.Message) -> None:
-        if self.state != GameState.JOINING or len(self.players) >= self.max_players:
-            return
+        async with self.join_lock:
+            if self.state != GameState.JOINING or len(self.players) >= self.max_players:
+                return
 
-        # Try to detect game not starting
-        if self.time_left < 0:
-            await self.scan_for_stale_timer()
-            return
+            # Try to detect game not starting
+            if self.time_left < 0:
+                asyncio.create_task(self.scan_for_stale_timer())
+                return
 
-        # Check if user already joined
-        user = message.from_user
-        if self.user_in_game(user.id):
-            return
+            # Check if user already joined
+            user = message.from_user
+            if self.user_in_game(user.id):
+                return
 
-        player = await Player.create(user)
-        self.players.append(player)
+            player = await Player.create(user)
+            self.players.append(player)
 
-        await self.send_message(
-            f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} now "
-            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-            parse_mode=types.ParseMode.HTML
-        )
+            await self.send_message(
+                f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} now "
+                f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+                parse_mode=types.ParseMode.HTML
+            )
 
-        # Start game when max players reached
-        if len(self.players) >= self.max_players:
-            self.time_left = -99999
+            # Start game when max players reached
+            if len(self.players) >= self.max_players:
+                self.time_left = -99999
 
     async def forcejoin(self, message: types.Message) -> None:
-        if self.state == GameState.KILLGAME or len(self.players) >= self.max_players:
-            return
+        async with self.join_lock:
+            if self.state == GameState.KILLGAME or len(self.players) >= self.max_players:
+                return
 
-        if message.reply_to_message:
-            user = message.reply_to_message.from_user
-        else:
-            user = message.from_user
+            if message.reply_to_message:
+                user = message.reply_to_message.from_user
+            else:
+                user = message.from_user
 
-        # Check if user already joined
-        if self.user_in_game(user.id):
-            return
+            # Check if user already joined
+            if self.user_in_game(user.id):
+                return
 
-        player = await Player.create(user)
-        self.players.append(player)
-        if self.state == GameState.RUNNING:
-            self.players_in_game.append(player)
+            player = await Player.create(user)
+            self.players.append(player)
+            if self.state == GameState.RUNNING:
+                self.players_in_game.append(player)
 
-        await self.send_message(
-            f"{player.name} was forced to join. There {'is' if len(self.players) == 1 else 'are'} now "
-            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-            parse_mode=types.ParseMode.HTML
-        )
+            await self.send_message(
+                f"{player.name} was forced to join. There {'is' if len(self.players) == 1 else 'are'} now "
+                f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+                parse_mode=types.ParseMode.HTML
+            )
 
-        # Start game when max players reached
-        if len(self.players) >= self.max_players:
-            self.time_left = -99999
+            # Start game when max players reached
+            if len(self.players) >= self.max_players:
+                self.time_left = -99999
 
     async def flee(self, message: types.Message) -> None:
-        if self.state != GameState.JOINING:
-            return
+        async with self.join_lock:
+            if self.state != GameState.JOINING:
+                return
 
-        # Find player to remove
-        user_id = message.from_user.id
-        for i in range(len(self.players)):
-            if self.players[i].user_id == user_id:
-                player = self.players.pop(i)
-                break
-        else:
-            return
+            # Find player to remove
+            user_id = message.from_user.id
+            for i in range(len(self.players)):
+                if self.players[i].user_id == user_id:
+                    player = self.players.pop(i)
+                    break
+            else:
+                return
 
-        await self.send_message(
-            f"{player.name} fled. There {'is' if len(self.players) == 1 else 'are'} now "
-            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-            parse_mode=types.ParseMode.HTML
-        )
+            await self.send_message(
+                f"{player.name} fled. There {'is' if len(self.players) == 1 else 'are'} now "
+                f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+                parse_mode=types.ParseMode.HTML
+            )
 
     async def forceflee(self, message: types.Message) -> None:
-        # Player to be fled = Sender of replies message
-        if self.state != GameState.JOINING or not message.reply_to_message:
-            return
+        async with self.join_lock:
+            # Player to be fled = Sender of replies message
+            if self.state != GameState.JOINING or not message.reply_to_message:
+                return
 
-        # Find player to remove
-        user_id = message.reply_to_message.from_user.id
-        for i in range(len(self.players)):
-            if self.players[i].user_id == user_id:
-                player = self.players.pop(i)
-                break
-        else:
-            return
+            # Find player to remove
+            user_id = message.reply_to_message.from_user.id
+            for i in range(len(self.players)):
+                if self.players[i].user_id == user_id:
+                    player = self.players.pop(i)
+                    break
+            else:
+                return
 
-        await self.send_message(
-            f"{player.name} was forced to flee. There {'is' if len(self.players) == 1 else 'are'} now "
-            f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-            parse_mode=types.ParseMode.HTML
-        )
+            await self.send_message(
+                f"{player.name} was forced to flee. There {'is' if len(self.players) == 1 else 'are'} now "
+                f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
+                parse_mode=types.ParseMode.HTML
+            )
+
+    async def addvp(self, message: types.Message) -> None:
+        async with self.join_lock:
+            if self.state != GameState.JOINING or len(self.players) >= self.max_players:
+                return
+
+            # Check if On9Bot already joined
+            if any(p.is_vp for p in self.players):
+                return
+
+            # Check if vp adder is player/admin/owner
+            if (
+                message.from_user.id != OWNER_ID
+                and not self.user_in_game(message.from_user.id)
+                and not await self.is_admin(message.from_user.id)
+            ):
+                await self.send_message("Imagine not playing")
+                return
+
+            try:
+                vp = await bot.get_chat_member(self.group_id, on9bot.id)
+                # VP must be chat member
+                assert vp.is_chat_member() or vp.is_chat_admin()
+            except (BadRequest, AssertionError):
+                await self.send_message(
+                    f"Add [On9Bot](tg://user?id={on9bot.id}) here to play as a virtual player.",
+                    reply_markup=ADD_ON9BOT_TO_GROUP_KEYBOARD
+                )
+                return
+
+            vp = await Player.vp()
+            self.players.append(vp)
+
+            await on9bot.send_message(self.group_id, "/join@" + (await bot.me).username)
+            await self.send_message(
+                (
+                    f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} now "
+                    f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}."
+                ),
+                parse_mode=types.ParseMode.HTML
+            )
+
+            # Start game when max players reached
+            if len(self.players) >= self.max_players:
+                self.time_left = -99999
+
+    async def remvp(self, message: types.Message) -> None:
+        async with self.join_lock:
+            if self.state != GameState.JOINING:
+                return
+
+            # Check if On9Bot has joined
+            if not any(p.is_vp for p in self.players):
+                return
+
+            # Check if vp remover is player/admin
+            if (
+                message.from_user.id != OWNER_ID
+                and not self.user_in_game(message.from_user.id)
+                and not await self.is_admin(message.from_user.id)
+            ):
+                await self.send_message("Imagine not playing")
+                return
+
+            for i in range(len(self.players)):
+                if self.players[i].is_vp:
+                    vp = self.players.pop(i)
+                    break
+            else:
+                return
+
+            await on9bot.send_message(self.group_id, "/flee@" + (await bot.me).username)
+            await self.send_message(
+                (
+                    f"{vp.name} fled. There {'is' if len(self.players) == 1 else 'are'} now "
+                    f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}."
+                ),
+                parse_mode=types.ParseMode.HTML
+            )
 
     async def extend(self, message: types.Message) -> None:
         if self.state != GameState.JOINING:
@@ -215,87 +300,6 @@ class ClassicGame:
                 f"The joining phase has been extended by {added_duration}s.\n"
                 f"You have {self.time_left}s to /join."
             )
-
-    async def addvp(self, message: types.Message) -> None:
-        if self.state != GameState.JOINING or len(self.players) >= self.max_players:
-            return
-
-        # Check if On9Bot already joined
-        for p in self.players:
-            if p.is_vp:
-                return
-
-        # Check if vp adder is player/admin/owner
-        if (
-            message.from_user.id != OWNER_ID
-            and not self.user_in_game(message.from_user.id)
-            and not await self.is_admin(message.from_user.id)
-        ):
-            await self.send_message("Imagine not playing")
-            return
-
-        try:
-            vp = await bot.get_chat_member(self.group_id, on9bot.id)
-            # VP must be chat member
-            assert vp.is_chat_member() or vp.is_chat_admin()
-        except (BadRequest, AssertionError):
-            await self.send_message(
-                f"Add [On9Bot](tg://user?id={on9bot.id}) here to play as a virtual player.",
-                reply_markup=ADD_ON9BOT_TO_GROUP_KEYBOARD
-            )
-            return
-
-        vp = await Player.vp()
-        self.players.append(vp)
-
-        await on9bot.send_message(self.group_id, "/join@" + (await bot.me).username)
-        await self.send_message(
-            (
-                f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} now "
-                f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}."
-            ),
-            parse_mode=types.ParseMode.HTML
-        )
-
-        # Start game when max players reached
-        if len(self.players) >= self.max_players:
-            self.time_left = -99999
-
-    async def remvp(self, message: types.Message) -> None:
-        if self.state != GameState.JOINING:
-            return
-
-        # Check if On9Bot has joined
-        for i in range(len(self.players)):
-            if self.players[i].is_vp:
-                break
-        else:
-            return
-
-        # Check if vp remover is player/admin
-        if (
-            message.from_user.id != OWNER_ID
-            and not self.user_in_game(message.from_user.id)
-            and not await self.is_admin(message.from_user.id)
-        ):
-            await self.send_message("Imagine not playing")
-            return
-
-        for i in range(len(self.players)):
-            if self.players[i].is_vp:
-                vp = self.players.pop(i)
-                break
-        else:
-            return
-
-        await on9bot.send_message(self.group_id, "/flee@" + (await bot.me).username)
-        await self.send_message(
-            (
-                f"{vp.name} fled. There {'is' if len(self.players) == 1 else 'are'} now "
-                f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}."
-            ),
-            parse_mode=types.ParseMode.HTML
-        )
 
     async def send_turn_message(self) -> None:
         await self.send_message(
