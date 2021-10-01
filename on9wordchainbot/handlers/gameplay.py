@@ -54,9 +54,13 @@ async def start_game(message: types.Message, game_type: Type[ClassicGame]) -> No
         )
         return
 
-    game = game_type(message.chat.id)
-    GlobalState.games[group_id] = game
-    asyncio.create_task(game.main_loop(message))
+    async with GlobalState.games_lock:  # Avoid duplicate game creation
+        if group_id in GlobalState.games:
+            asyncio.create_task(GlobalState.games[group_id].join(message))
+        else:
+            game = game_type(message.chat.id)
+            GlobalState.games[group_id] = game
+            asyncio.create_task(game.main_loop(message))
 
 
 @dp.message_handler(RegexpCommandsFilter([r"^/(start[a-z]+)"]))
@@ -120,7 +124,7 @@ async def cmd_killgame(message: types.Message) -> None:
         assert group_id < 0, "smh"
         assert group_id in GlobalState.games, "no game running"
     except (ValueError, AssertionError) as e:
-        await message.reply(f"`{e.__class__.__name__}: {str(e)}`", allow_sending_without_reply=True)
+        await message.reply(f"`{e.__class__.__name__}: {e}`", allow_sending_without_reply=True)
         return
 
     GlobalState.games[group_id].state = GameState.KILLGAME

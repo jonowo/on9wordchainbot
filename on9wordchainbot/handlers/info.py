@@ -159,7 +159,8 @@ async def cmd_playinggroups(message: types.Message) -> None:
             text + (
                 f" <code>{group_id}</code> "
                 f"{len(GlobalState.games[group_id].players_in_game)}/{len(GlobalState.games[group_id].players)}P "
-                f"Timer: {GlobalState.games[group_id].time_left}s"
+                f"{GlobalState.games[group_id].turns}W "
+                f"{GlobalState.games[group_id].time_left}s"
             )
         )
 

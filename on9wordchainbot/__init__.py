@@ -30,17 +30,19 @@ else:
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 loop = asyncio.get_event_loop()
-bot = Bot(TOKEN, loop, parse_mode=types.ParseMode.MARKDOWN)
-on9bot = Bot(ON9BOT_TOKEN, loop)
-dp = Dispatcher(bot, loop)
-session = aiohttp.ClientSession(loop=loop)
+bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN)
+on9bot = Bot(ON9BOT_TOKEN)
+dp = Dispatcher(bot)
+session = aiohttp.ClientSession()
 pool: asyncpg.pool.Pool
 
 
 class GlobalState:
     build_time = datetime.now().replace(microsecond=0)
     maint_mode = False
+
     games: Dict[int, "ClassicGame"] = {}  # Group id mapped to game instance
+    games_lock: asyncio.Lock = asyncio.Lock()
 
 
 async def init() -> None:
