@@ -6,4 +6,5 @@ asyncio-periodic
 asyncpg
 matplotlib
 pillow
+pycairo
 DAWG
