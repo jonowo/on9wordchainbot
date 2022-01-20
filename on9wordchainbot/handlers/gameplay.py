@@ -185,8 +185,8 @@ async def cmd_incmaxp(message: types.Message) -> None:
     )
 
 
-@dp.message_handler(game_running=True, regexp=r"^[a-zA-Z]+$")
-@dp.edited_message_handler(game_running=True, regexp=r"^[a-zA-Z]+$")
+@dp.message_handler(game_running=True, regexp=r"^[a-zA-Z]{1,500}$")
+@dp.edited_message_handler(game_running=True, regexp=r"^[a-zA-Z]{1,500}$")
 async def answer_handler(message: types.Message) -> None:
     # TODO: Modify to support other languages (including regexp)
     group_id = message.chat.id
