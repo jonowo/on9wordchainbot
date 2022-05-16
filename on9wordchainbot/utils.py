@@ -50,7 +50,7 @@ def get_random_word(
 
 
 async def send_admin_group(*args: Any, **kwargs: Any) -> types.Message:
-    return await bot.send_message(ADMIN_GROUP_ID, *args, disable_web_page_preview=True, **kwargs)
+    return await bot.send_message(ADMIN_GROUP_ID, *args, **kwargs)
 
 
 @cached(ttl=15)

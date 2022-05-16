@@ -39,7 +39,6 @@ async def cmd_help(message: types.Message) -> None:
             "Source Code: [jonowo/on9wordchainbot](https://github.com/jonowo/on9wordchainbot)\n"
             "Epic icon designed by [Adri](tg://user?id=303527690)"
         ),
-        disable_web_page_preview=True,
         allow_sending_without_reply=True
     )
 
@@ -167,5 +166,5 @@ async def cmd_playinggroups(message: types.Message) -> None:
     await asyncio.gather(*[append_group(gid) for gid in GlobalState.games])
     await message.reply(
         "\n".join(groups), parse_mode=types.ParseMode.HTML,
-        disable_web_page_preview=True, allow_sending_without_reply=True
+        allow_sending_without_reply=True
     )

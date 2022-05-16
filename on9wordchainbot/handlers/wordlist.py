@@ -43,14 +43,14 @@ async def cmd_reqaddword(message: types.Message) -> None:
             (
                 "Function: Request new words. Check @on9wcwa for word list updates.\n"
                 "Before requesting a new word, please check that:\n"
-                "- It is an English word (\u274c other languages)\n"
-                "- It is spelled correctly\n"
+                "- It appears in a credible English dictionary "
+                "(\u2714\ufe0f Merriam-Webster \u274c Urban Dictionary)\n"
                 "- It is not a [proper noun](https://simple.wikipedia.org/wiki/Proper_noun) "
                 "(\u274c names)\n"
                 "  (existing proper nouns in the word list and nationalities are exempt)\n"
+                "Invalid words will delay the processing of submissions.\n"
                 "Usage: `/reqaddword word1 word2 ...`"
             ),
-            disable_web_page_preview=True,
             allow_sending_without_reply=True
         )
         return
@@ -60,7 +60,7 @@ async def cmd_reqaddword(message: types.Message) -> None:
     rejected_with_reason = []
     for w in words_to_add[:]:  # Iterate through a copy so removal of elements is possible
         if check_word_existence(w):
-            existing.append("_" + w.capitalize() + "_")
+            existing.append(f"_{w.capitalize()}_")
             words_to_add.remove(w)
 
     async with pool.acquire() as conn:
@@ -69,7 +69,7 @@ async def cmd_reqaddword(message: types.Message) -> None:
         if word not in words_to_add:
             continue
         words_to_add.remove(word)
-        word = "_" + word.capitalize() + "_"
+        word = f"_{word.capitalize()}_"
         if reason:
             rejected_with_reason.append((word, reason))
         else:
@@ -77,7 +77,7 @@ async def cmd_reqaddword(message: types.Message) -> None:
 
     text = ""
     if words_to_add:
-        text += f"Submitted {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} for approval.\n"
+        text += f"Submitted {', '.join([f'_{w.capitalize()}_' for w in words_to_add])} for approval.\n"
         asyncio.create_task(
             send_admin_group(
                 message.from_user.get_mention(
@@ -86,7 +86,7 @@ async def cmd_reqaddword(message: types.Message) -> None:
                     as_html=True
                 )
                 + " is requesting the addition of "
-                + ", ".join(["<i>" + w.capitalize() + "</i>" for w in words_to_add])
+                + ", ".join([f"<i>{w.capitalize()}</i>" for w in words_to_add])
                 + " to the word list. #reqaddword",
                 parse_mode=types.ParseMode.HTML
             )
@@ -112,7 +112,7 @@ async def cmd_addwords(message: types.Message) -> None:
     rejected_with_reason = []
     for w in words_to_add[:]:  # Cannot iterate while deleting
         if check_word_existence(w):
-            existing.append("_" + w.capitalize() + "_")
+            existing.append(f"_{w.capitalize()}_")
             words_to_add.remove(w)
 
     async with pool.acquire() as conn:
@@ -121,7 +121,7 @@ async def cmd_addwords(message: types.Message) -> None:
         if word not in words_to_add:
             continue
         words_to_add.remove(word)
-        word = "_" + word.capitalize() + "_"
+        word = f"_{word.capitalize()}_"
         if reason:
             rejected_with_reason.append((word, reason))
         else:
@@ -131,7 +131,7 @@ async def cmd_addwords(message: types.Message) -> None:
     if words_to_add:
         async with pool.acquire() as conn:
             await conn.copy_records_to_table("wordlist", records=[(w, True, None) for w in words_to_add])
-        text += f"Added {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.\n"
+        text += f"Added {', '.join([f'_{w.capitalize()}_' for w in words_to_add])} to the word list.\n"
     if existing:
         text += f"{', '.join(existing)} {'is' if len(existing) == 1 else 'are'} already in the word list.\n"
     if rejected:
@@ -151,7 +151,7 @@ async def cmd_addwords(message: types.Message) -> None:
     asyncio.create_task(
         bot.send_message(
             WORD_ADDITION_CHANNEL_ID,
-            f"Added {', '.join(['_' + w.capitalize() + '_' for w in words_to_add])} to the word list.",
+            f"Added {', '.join([f'_{w.capitalize()}_' for w in words_to_add])} to the word list.",
             disable_notification=True
         )
     )

@@ -152,7 +152,7 @@ async def cmd_addvp(message: types.Message) -> None:
                 f"Sorry, [{(await on9bot.me).full_name}](https://t.me/{(await on9bot.me).username}) "
                 "can't play elimination games."
             ),
-            disable_web_page_preview=True, allow_sending_without_reply=True
+            allow_sending_without_reply=True
         )
         return
     await GlobalState.games[group_id].addvp(message)

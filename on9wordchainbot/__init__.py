@@ -30,7 +30,7 @@ else:
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 loop = asyncio.get_event_loop()
-bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN)
+bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN, disable_web_page_preview=True)
 on9bot = Bot(ON9BOT_TOKEN)
 dp = Dispatcher(bot)
 session = aiohttp.ClientSession()

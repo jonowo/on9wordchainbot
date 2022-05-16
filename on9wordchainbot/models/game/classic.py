@@ -57,8 +57,7 @@ class ClassicGame:
 
     async def send_message(self, *args: Any, **kwargs: Any) -> types.Message:
         return await bot.send_message(
-            self.group_id, *args, disable_web_page_preview=True,
-            allow_sending_without_reply=True, **kwargs
+            self.group_id, *args, allow_sending_without_reply=True, **kwargs
         )
 
     @cached(ttl=15)

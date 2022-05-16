@@ -22,7 +22,7 @@ async def cmd_start(message: types.Message) -> None:
             "Hi! I host games of word chain in Telegram groups.\n"
             "Add me to a group to start playing games!"
         ),
-        disable_web_page_preview=True, allow_sending_without_reply=True,
+        allow_sending_without_reply=True,
         reply_markup=ADD_TO_GROUP_KEYBOARD
     )
 
