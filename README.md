@@ -33,7 +33,7 @@ PostgreSQL 11+ \
 Rename [config_format.json](config_format.json) to `config.json` and edit the following constants:
 
 - `TOKEN`*: A Telegram bot token.
-- `ON9BOT_TOKEN`*: Another Telegram bot token for the virtual player bot. Can be the same as `TOKEN`.
+- `ON9BOT_TOKEN`*: Another Telegram bot token for the virtual player bot.
 - `DB_URI`: A [PostgresSQL database URI](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
 - `PROVIDER_TOKEN`*#: A Telegram payment provider token.
 - `OWNER_ID`: Telegram user id of the bot owner.
