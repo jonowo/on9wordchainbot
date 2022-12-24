@@ -34,7 +34,7 @@ async def cmd_help(message: types.Message) -> None:
             "/feedback - Send feedback to bot owner\n\n"
             "You may message [Jono](tg://user?id=463998526) "
             "in *English / Cantonese* if you have issues with the bot.\n"
-            "Official Group: @on9wordchain\n"
+            "Official Group: https://t.me/+T30aTNo-2Xx2kc52\n"
             "Word Additions Channel (with status updates): @on9wcwa\n"
             "Source Code: [jonowo/on9wordchainbot](https://github.com/jonowo/on9wordchainbot)\n"
             "Epic icon designed by [Adri](tg://user?id=303527690)"
@@ -61,7 +61,7 @@ async def cmd_gameinfo(message: types.Message) -> None:
             "Each player's score is their cumulative word length. "
             "The lowest scoring players are eliminated after each round.\n\n"
             "/startmelim - Mixed elimination game (donation reward)\n"
-            "Elimination game with different modes. Try at @on9wordchain."
+            "Elimination game with different modes. Try at the [official group](https://t.me/+T30aTNo-2Xx2kc52)."
         ),
         allow_sending_without_reply=True
     )

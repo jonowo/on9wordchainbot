@@ -214,8 +214,8 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
                 "UPDATE gameplayer SET group_id = $1 WHERE group_id = $2;",
                 error.migrate_to_chat_id, group_id
             )
-            await conn.execute("DELETE FROM game WHERE group_id = $1;", group_id)
-            await conn.execute("DELETE FROM gameplayer WHERE group_id = $1;", group_id)
+            # await conn.execute("DELETE FROM game WHERE group_id = $1;", group_id)
+            # await conn.execute("DELETE FROM gameplayer WHERE group_id = $1;", group_id)
         await send_admin_group(f"Group statistics migrated from {group_id} to {error.migrate_to_chat_id}.")
         return
 

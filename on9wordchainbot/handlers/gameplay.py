@@ -1,4 +1,5 @@
 import asyncio
+import re
 from re import Match
 from typing import Type
 
@@ -48,7 +49,7 @@ async def start_game(message: types.Message, game_type: Type[ClassicGame]) -> No
         await message.reply(
             (
                 "This game mode is a donation reward.\n"
-                "You can try this game mode at @on9wordchain."
+                "You can try this game mode at the [official group](https://t.me/+T30aTNo-2Xx2kc52)."
             ),
             allow_sending_without_reply=True
         )
@@ -185,10 +186,12 @@ async def cmd_incmaxp(message: types.Message) -> None:
     )
 
 
-@dp.message_handler(game_running=True, regexp=r"^[a-zA-Z]{1,500}$")
-@dp.edited_message_handler(game_running=True, regexp=r"^[a-zA-Z]{1,500}$")
+@dp.message_handler(game_running=True)
+@dp.edited_message_handler(game_running=True)
 async def answer_handler(message: types.Message) -> None:
-    # TODO: Modify to support other languages (including regexp)
+    if not re.match(r"^[a-zA-z]{1,100}$", message.text):
+        return
+
     group_id = message.chat.id
     if (
         GlobalState.games[group_id].players_in_game

@@ -23,11 +23,11 @@ else:
 logger = logging.getLogger(__name__)
 
 try:
-    import uvloop
+    import uvloop  # pip install uvloop
 except ImportError:
     logger.info(r"uvloop unavailable ¯\_(ツ)_/¯")
 else:
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    uvloop.install()
 
 loop = asyncio.get_event_loop()
 bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN, disable_web_page_preview=True)
