@@ -189,7 +189,7 @@ async def cmd_incmaxp(message: types.Message) -> None:
 @dp.message_handler(game_running=True)
 @dp.edited_message_handler(game_running=True)
 async def answer_handler(message: types.Message) -> None:
-    if not re.match(r"^[a-zA-z]{1,100}$", message.text):
+    if not re.match(r"^[a-zA-Z]{1,100}$", message.text):
         return
 
     group_id = message.chat.id
