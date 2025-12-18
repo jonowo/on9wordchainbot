@@ -226,7 +226,7 @@ async def error_handler(update: types.Update, error: TelegramAPIError) -> None:
             f"<pre>{str(error)}</pre>"
         ) if isinstance(error, RetryAfter) else (
             "<pre>"
-            + "".join(traceback.format_exception(etype=type(error), value=error, tb=error.__traceback__))
+            + "".join(traceback.format_exception(error))
             + f"@ {group_id if update.message and update.message.chat else 'idk'}</pre>"
         ),
         parse_mode=types.ParseMode.HTML

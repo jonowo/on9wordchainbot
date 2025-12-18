@@ -1,7 +1,7 @@
 import asyncio
 import random
 from datetime import datetime
-from typing import Any, List, Optional, Set
+from typing import Any, Optional
 
 from aiocache import cached
 from aiogram import types
@@ -26,13 +26,13 @@ class ClassicGame:
 
     def __init__(self, group_id: int) -> None:
         self.group_id = group_id
-        self.players: List[Player] = []
-        self.players_in_game: List[Player] = []
+        self.players: list[Player] = []
+        self.players_in_game: list[Player] = []
         self.state = GameState.JOINING
         self.start_time: Optional[datetime] = None
         self.end_time: Optional[datetime] = None
         # Store user ids rather than Player object since players may quit then join to extend again
-        self.extended_user_ids: Set[int] = set()
+        self.extended_user_ids: set[int] = set()
 
         # Game settings
         self.min_players = GameSettings.MIN_PLAYERS
@@ -48,7 +48,7 @@ class ClassicGame:
         self.answered = False
         self.accepting_answers = False
         self.turns = 0
-        self.used_words: Set[str] = set()
+        self.used_words: set[str] = set()
 
         self.join_lock = asyncio.Lock()  # Prevent same user / vp joining as multiple players
 

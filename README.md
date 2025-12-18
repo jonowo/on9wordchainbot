@@ -19,7 +19,7 @@ On9 Word Chain Bot hosts games of word chain in Telegram groups.
 ## Installation
 
 ### Requirements
-Python 3.7+ \
+Python 3.10+ \
 PostgreSQL 11+ \
 2 Telegram bots
 

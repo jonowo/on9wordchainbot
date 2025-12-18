@@ -2,7 +2,7 @@ import asyncio
 import os
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import aiofiles
 import aiofiles.os
@@ -74,14 +74,14 @@ async def cmd_groupstats(message: types.Message) -> None:
 
 @cached(ttl=5)
 async def get_global_stats() -> str:
-    async def get_cnt_1() -> Tuple[int, int]:
+    async def get_cnt_1() -> tuple[int, int]:
         async with pool.acquire() as conn:
             group_cnt, game_cnt = await conn.fetchrow(
                 "SELECT COUNT(DISTINCT group_id), COUNT(*) FROM game;"
             )
         return group_cnt, game_cnt
 
-    async def get_cnt_2() -> Tuple[int, int, int]:
+    async def get_cnt_2() -> tuple[int, int, int]:
         async with pool.acquire() as conn:
             player_cnt, word_cnt, letter_cnt = await conn.fetchrow(
                 "SELECT COUNT(*), SUM(word_count), SUM(letter_count) FROM player;"
@@ -120,7 +120,7 @@ async def cmd_trends(message: types.Message) -> None:
     t = time.time()  # Measure time used to generate graphs
     today = datetime.now().date()
 
-    async def get_daily_games() -> Dict[str, Any]:
+    async def get_daily_games() -> dict[str, Any]:
         async with pool.acquire() as conn:
             return dict(
                 await conn.fetch(
@@ -134,7 +134,7 @@ async def cmd_trends(message: types.Message) -> None:
                 )
             )
 
-    async def get_active_players() -> Dict[str, Any]:
+    async def get_active_players() -> dict[str, Any]:
         async with pool.acquire() as conn:
             return dict(
                 await conn.fetch(
@@ -149,7 +149,7 @@ async def cmd_trends(message: types.Message) -> None:
                 )
             )
 
-    async def get_active_groups() -> Dict[str, Any]:
+    async def get_active_groups() -> dict[str, Any]:
         async with pool.acquire() as conn:
             return dict(
                 await conn.fetch(
@@ -163,7 +163,7 @@ async def cmd_trends(message: types.Message) -> None:
                 )
             )
 
-    async def get_cumulative_groups() -> Dict[str, Any]:
+    async def get_cumulative_groups() -> dict[str, Any]:
         async with pool.acquire() as conn:
             return dict(
                 await conn.fetch(
@@ -186,7 +186,7 @@ async def cmd_trends(message: types.Message) -> None:
                 )
             )
 
-    async def get_cumulative_players() -> Dict[str, Any]:
+    async def get_cumulative_players() -> dict[str, Any]:
         async with pool.acquire() as conn:
             return dict(
                 await conn.fetch(
@@ -210,7 +210,7 @@ async def cmd_trends(message: types.Message) -> None:
                 )
             )
 
-    async def get_game_mode_play_cnt() -> List[Record]:
+    async def get_game_mode_play_cnt() -> list[Record]:
         async with pool.acquire() as conn:
             return await conn.fetch(
                 """\

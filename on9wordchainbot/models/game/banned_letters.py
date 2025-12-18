@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
 from string import ascii_lowercase
-from typing import List, Optional
+from typing import Optional
 
 from aiogram import types
 
@@ -17,7 +17,7 @@ class BannedLettersGame(ClassicGame):
 
     def __init__(self, group_id: int) -> None:
         super().__init__(group_id)
-        self.banned_letters: List[str] = []
+        self.banned_letters: list[str] = []
 
     async def send_turn_message(self) -> None:
         await self.send_message(

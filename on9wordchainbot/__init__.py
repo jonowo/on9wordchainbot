@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import aiohttp
 import asyncpg
@@ -29,7 +29,8 @@ except ImportError:
 else:
     uvloop.install()
 
-loop = asyncio.get_event_loop()
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN, disable_web_page_preview=True)
 on9bot = Bot(ON9BOT_TOKEN)
 dp = Dispatcher(bot)
@@ -41,7 +42,7 @@ class GlobalState:
     build_time = datetime.now().replace(microsecond=0)
     maint_mode = False
 
-    games: Dict[int, "ClassicGame"] = {}  # Group id mapped to game instance
+    games: dict[int, "ClassicGame"] = {}  # Group id mapped to game instance
     games_lock: asyncio.Lock = asyncio.Lock()
 
 

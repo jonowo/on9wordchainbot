@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from typing import List
 
 from dawg import CompletionDAWG
 
@@ -19,13 +18,13 @@ class Words:
         # Words retrieved from online repo and database table with additional approved words
         logger.info("Retrieving words")
 
-        async def get_words_from_source() -> List[str]:
+        async def get_words_from_source() -> list[str]:
             from . import session
 
             async with session.get(WORDLIST_SOURCE) as resp:
                 return (await resp.text()).splitlines()
 
-        async def get_words_from_db() -> List[str]:
+        async def get_words_from_db() -> list[str]:
             from . import pool
 
             async with pool.acquire() as conn:
