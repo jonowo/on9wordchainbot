@@ -47,11 +47,16 @@ Install and update dependencies with `pip install -Ur requirements.txt`. \
 Run `python -m on9wordchainbot`.
 
 ### Roadmap
+- Switch from Markdown to HTML completely
+- Fix slow db queries
+- Fix slow `/trend` generation
+- Rewrite to be more event-driven and principled
+- Notify admin group when on maint mode and last game finishes
+- Some kind of observability (dashboard?)
+- Rate limiting
 - Set up webhook?
 - Make required letter game more reasonable
 - Group leaderboard
-- Switch from Markdown to HTML completely
-- i18n for text strings
 
 ### Development
 ```

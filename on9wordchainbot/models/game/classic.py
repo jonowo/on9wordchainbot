@@ -67,8 +67,15 @@ class ClassicGame:
 
     @cached(ttl=15)
     async def is_admin(self, user_id: int) -> bool:
-        user = await bot.get_chat_member(self.group_id, user_id)
-        return isinstance(user, ADMINS)
+        try:
+            user = await bot.get_chat_member(self.group_id, user_id)
+        except TelegramBadRequest as e:
+            if "CHAT_ADMIN_REQUIRED" in str(e):
+                return False
+            else:
+                raise e
+        else:
+            return isinstance(user, ADMINS)
 
     async def join(self, message: types.Message) -> None:
         async with self.join_lock:

@@ -11,6 +11,24 @@ from on9wordchainbot.constants import GameState
 from on9wordchainbot.utils import awaitable_to_coroutine, send_admin_group
 
 
+async def migrate_chat(old_chat_id: int, new_chat_id: int) -> None:
+    # TODO: Test
+    # Migrate group running game and statistics
+    if old_chat_id in GlobalState.games:
+        GlobalState.games[new_chat_id] = GlobalState.games.pop(old_chat_id)
+        GlobalState.games[new_chat_id].group_id = new_chat_id
+        asyncio.create_task(
+            awaitable_to_coroutine(send_admin_group(f"Game moved from {old_chat_id} to {new_chat_id}."))
+        )
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE game SET group_id = $1 WHERE group_id = $2;", new_chat_id, old_chat_id)
+        await conn.execute("UPDATE gameplayer SET group_id = $1 WHERE group_id = $2;", new_chat_id, old_chat_id)
+
+    await send_admin_group(f"Group statistics migrated from {old_chat_id} to {new_chat_id}.")
+
+
 async def error_handler(event: types.ErrorEvent) -> None:
     update = event.update
     error = event.exception
@@ -38,27 +56,8 @@ async def error_handler(event: types.ErrorEvent) -> None:
         # if str(error).startswith("Internal Server Error: sent message was immediately deleted"):
         #     return
 
-        if isinstance(error, TelegramMigrateToChat):  # TODO: Test
-            # Migrate group running game and statistics
-            if group_id in GlobalState.games:
-                GlobalState.games[error.migrate_to_chat_id] = GlobalState.games.pop(group_id)
-                GlobalState.games[error.migrate_to_chat_id].group_id = error.migrate_to_chat_id
-                asyncio.create_task(
-                    awaitable_to_coroutine(send_admin_group(f"Game moved from {group_id} to {error.migrate_to_chat_id}."))
-                )
-
-            pool = get_pool()
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    "UPDATE game SET group_id = $1 WHERE group_id = $2;",
-                    error.migrate_to_chat_id, group_id
-                )
-                await conn.execute(
-                    "UPDATE gameplayer SET group_id = $1 WHERE group_id = $2;",
-                    error.migrate_to_chat_id, group_id
-                )
-
-            await send_admin_group(f"Group statistics migrated from {group_id} to {error.migrate_to_chat_id}.")
+        if isinstance(error, TelegramMigrateToChat):
+            migrate_chat(update.message.chat.id, error.migrate_to_chat_id)
             return
 
         send_admin_msg = await send_admin_group(

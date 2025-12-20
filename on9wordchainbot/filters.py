@@ -1,4 +1,5 @@
 from aiogram import types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Filter
 from aiogram.utils.chat_member import ADMINS
 
@@ -20,8 +21,16 @@ class IsAdmin(Filter):
     async def __call__(self, message: types.Message) -> bool:
         if message.from_user.id == OWNER_ID:
             return True
-        member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
-        return isinstance(member, ADMINS)
+
+        try:
+            member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
+        except TelegramBadRequest as e:
+            if "CHAT_ADMIN_REQUIRED" in str(e):
+                return False
+            else:
+                raise e
+        else:
+            return isinstance(member, ADMINS)
 
 
 class HasGameInstance(Filter):

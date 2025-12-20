@@ -10,10 +10,10 @@ from on9wordchainbot.words import Words
 try:
     import coloredlogs
 except ImportError:
-    logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.WARNING)
+    logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
     logging.warning("coloredlogs not available; defaulting to logging. To install, use `pip install coloredlogs`.")
 else:
-    coloredlogs.install(fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.WARNING)
+    coloredlogs.install(fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 

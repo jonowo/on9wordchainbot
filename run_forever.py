@@ -6,7 +6,7 @@ import time
 
 while True:
     try:
-        subprocess.run([sys.executable, "-u", "-m", "on9wordchainbot"])
+        subprocess.run([sys.executable, "-m", "on9wordchainbot"])
         time.sleep(0.2)
     except KeyboardInterrupt:
         break
