@@ -8,33 +8,42 @@ import aiofiles
 import aiofiles.os
 import matplotlib.pyplot as plt
 from aiocache import cached
-from aiogram import types
-from aiogram.utils.markdown import quote_html
+from aiogram import Router, types, html
+from aiogram.enums import ParseMode
+from aiogram.filters import Command, CommandObject
 from asyncpg import Record
 from matplotlib.dates import DateFormatter
 from matplotlib.ticker import MaxNLocator
 
-from .. import dp, pool
-from ..utils import has_star, send_groups_only_message
+from on9wordchainbot.constants import STAR
+from on9wordchainbot.resources import get_pool
+from on9wordchainbot.filters import IsOwner
+from on9wordchainbot.utils import has_star, send_groups_only_message
+
+router = Router(name=__name__)
 
 
-@dp.message_handler(commands=["stat", "stats", "stalk"])
+@router.message(Command("stat", "stats", "stalk"))
 async def cmd_stats(message: types.Message) -> None:
     rmsg = message.reply_to_message
     user = (rmsg.forward_from or rmsg.from_user) if rmsg else message.from_user
+
+    name = user.full_name
+    if await has_star(user.id):
+        name += f" {STAR}"
+    mention = user.mention_html(name=name)
+
+    pool = get_pool()
     async with pool.acquire() as conn:
         res = await conn.fetchrow("SELECT * FROM player WHERE user_id = $1;", user.id)
 
     if not res:
         await message.reply(
-            f"No statistics for {user.get_mention(as_html=True)}!",
-            parse_mode=types.ParseMode.HTML, allow_sending_without_reply=True
+            f"No statistics for {mention}!",
+            parse_mode=ParseMode.HTML
         )
         return
 
-    mention = user.get_mention(
-        name=user.full_name + (" \u2b50\ufe0f" if await has_star(user.id) else ""), as_html=True
-    )
     text = (
         f"\U0001f4ca Statistics for {mention}:\n"
         f"<b>{res['game_count']}</b> games played\n"
@@ -44,13 +53,14 @@ async def cmd_stats(message: types.Message) -> None:
     )
     if res["longest_word"]:
         text += f"\nLongest word: <b>{res['longest_word'].capitalize()}</b>"
-    await message.reply(text, parse_mode=types.ParseMode.HTML, allow_sending_without_reply=True)
+    await message.reply(text, parse_mode=ParseMode.HTML)
 
 
-@dp.message_handler(commands="groupstats")
+@router.message(Command("groupstats"))
 @send_groups_only_message
 async def cmd_groupstats(message: types.Message) -> None:
     # TODO: Add top players in group (max 5) to message
+    pool = get_pool()
     async with pool.acquire() as conn:
         player_cnt, game_cnt, word_cnt, letter_cnt = await conn.fetchrow(
             """\
@@ -61,19 +71,20 @@ async def cmd_groupstats(message: types.Message) -> None:
         )
     await message.reply(
         (
-            f"\U0001f4ca Statistics for <b>{quote_html(message.chat.title)}</b>\n"
+            f"\U0001f4ca Statistics for <b>{html.quote(message.chat.title)}</b>\n"
             f"<b>{player_cnt}</b> players\n"
             f"<b>{game_cnt}</b> games played\n"
             f"<b>{word_cnt}</b> total words played\n"
             f"<b>{letter_cnt}</b> total letters played"
         ),
-        parse_mode=types.ParseMode.HTML,
-        allow_sending_without_reply=True
+        parse_mode=ParseMode.HTML
     )
 
 
 @cached(ttl=5)
 async def get_global_stats() -> str:
+    pool = get_pool()
+
     async def get_cnt_1() -> tuple[int, int]:
         async with pool.acquire() as conn:
             group_cnt, game_cnt = await conn.fetchrow(
@@ -103,22 +114,24 @@ async def get_global_stats() -> str:
     )
 
 
-@dp.message_handler(commands="globalstats")
+@router.message(Command("globalstats"))
 async def cmd_globalstats(message: types.Message) -> None:
-    await message.reply(await get_global_stats(), allow_sending_without_reply=True)
+    await message.reply(await get_global_stats())
 
 
-@dp.message_handler(is_owner=True, commands=["trend", "trends"])
-async def cmd_trends(message: types.Message) -> None:
+@router.message(IsOwner(), Command("trend", "trends"))
+async def cmd_trends(message: types.Message, command: CommandObject) -> None:
+    args = command.args
     try:
-        days = int(message.get_args() or 14)
+        days = int(args or 14)
         assert days > 1, "smh"
     except (ValueError, AssertionError) as e:
-        await message.reply(f"`{e.__class__.__name__}: {str(e)}`", allow_sending_without_reply=True)
+        await message.reply(f"`{e.__class__.__name__}: {str(e)}`")
         return
 
     t = time.time()  # Measure time used to generate graphs
     today = datetime.now().date()
+    pool = get_pool()
 
     async def get_daily_games() -> dict[str, Any]:
         async with pool.acquire() as conn:
@@ -351,6 +364,5 @@ async def cmd_trends(message: types.Message) -> None:
     # Save the plot as a jpg and send it
     plt.savefig("trends.jpg", bbox_inches="tight")
     plt.close("all")
-    async with aiofiles.open("trends.jpg", "rb") as f:
-        await message.reply_photo(f, caption=f"Generation time: `{time.time() - t:.3f}s`")
+    await message.reply_photo(types.FSInputFile("trends.jpg"), caption=f"Generation time: `{time.time() - t:.3f}s`")
     await aiofiles.os.remove("trends.jpg")

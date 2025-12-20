@@ -10,16 +10,16 @@ logger.info("Loading constants from config file")
 with open(filename) as f:
     config = json.load(f)
 
-TOKEN = config["TOKEN"]
-ON9BOT_TOKEN = config["ON9BOT_TOKEN"]
-DB_URI = config["DB_URI"]
-PROVIDER_TOKEN = config["PROVIDER_TOKEN"]
-OWNER_ID = config["OWNER_ID"]
-ADMIN_GROUP_ID = config["ADMIN_GROUP_ID"]
-OFFICIAL_GROUP_ID = config["OFFICIAL_GROUP_ID"]
-WORD_ADDITION_CHANNEL_ID = config["WORD_ADDITION_CHANNEL_ID"]
-VIP = config["VIP"]
-VIP_GROUP = config["VIP_GROUP"]
+TOKEN: str = config["TOKEN"]
+ON9BOT_TOKEN: str = config["ON9BOT_TOKEN"]
+DB_URI: str = config["DB_URI"]
+PROVIDER_TOKEN: str = config["PROVIDER_TOKEN"]
+OWNER_ID: int = config["OWNER_ID"]
+ADMIN_GROUP_ID: int = config["ADMIN_GROUP_ID"]
+OFFICIAL_GROUP_ID: int = config["OFFICIAL_GROUP_ID"]
+WORD_ADDITION_CHANNEL_ID: int = config["WORD_ADDITION_CHANNEL_ID"]
+VIP: list[int] = config["VIP"]
+VIP_GROUP: list[int] = config["VIP_GROUP"]
 
 WORDLIST_SOURCE = "https://raw.githubusercontent.com/dwyl/english-words/master/words.txt"
 

@@ -1,4 +1,13 @@
-from . import donation, gameplay, info, misc, stats, wordlist
+from on9wordchainbot.handlers import donation, gameplay, info, misc, stats, wordlist
+
+routers = [
+    donation.router,
+    gameplay.router,
+    info.router,
+    misc.router,
+    stats.router,
+    wordlist.router
+]
 
 __all__ = (
     "donation",
@@ -6,5 +15,6 @@ __all__ = (
     "info",
     "misc",
     "stats",
-    "wordlist"
+    "wordlist",
+    "routers"
 )

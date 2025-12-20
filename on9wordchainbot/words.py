@@ -3,7 +3,8 @@ import logging
 
 from dawg import CompletionDAWG
 
-from .constants import WORDLIST_SOURCE
+from on9wordchainbot.constants import WORDLIST_SOURCE
+from on9wordchainbot.resources import get_pool, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +20,13 @@ class Words:
         logger.info("Retrieving words")
 
         async def get_words_from_source() -> list[str]:
-            from . import session
-
+            session = get_session()
             async with session.get(WORDLIST_SOURCE) as resp:
-                return (await resp.text()).splitlines()
+                text = await resp.text()
+                return text.splitlines()
 
         async def get_words_from_db() -> list[str]:
-            from . import pool
-
+            pool = get_pool()
             async with pool.acquire() as conn:
                 res = await conn.fetch("SELECT word from wordlist WHERE accepted;")
                 return [row[0] for row in res]

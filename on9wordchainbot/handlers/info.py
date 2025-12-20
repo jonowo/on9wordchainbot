@@ -2,72 +2,69 @@ import asyncio
 import time
 from datetime import datetime
 
-from aiogram import types
-from aiogram.dispatcher.filters import ChatTypeFilter, CommandHelp, CommandStart
-from aiogram.utils.deep_linking import get_start_link
-from aiogram.utils.markdown import quote_html
+from aiogram import Router, F, types, html
+from aiogram.enums import ChatType, ParseMode
+from aiogram.filters import Command, CommandStart
+from aiogram.utils.deep_linking import create_start_link
 
-from .. import GlobalState, bot, dp
-from ..constants import GameState
-from ..utils import inline_keyboard_from_button, send_private_only_message
-from ..words import Words
+from on9wordchainbot.resources import GlobalState
+from on9wordchainbot.constants import GameState
+from on9wordchainbot.utils import inline_keyboard_from_button, send_private_only_message
+from on9wordchainbot.filters import IsOwner
+from on9wordchainbot.words import Words
+
+router = Router(name=__name__)
 
 
-@dp.message_handler(CommandStart("help"), ChatTypeFilter([types.ChatType.PRIVATE]))
-@dp.message_handler(CommandHelp())
+@router.message(CommandStart(deep_link=True, magic=F.args == "help"), F.chat.type == ChatType.PRIVATE)
+@router.message(Command("help"))
 async def cmd_help(message: types.Message) -> None:
     if message.chat.id < 0:
+        start_link = await create_start_link(message.bot, "help")
         await message.reply(
             "Please use this command in private.",
-            allow_sending_without_reply=True,
             reply_markup=inline_keyboard_from_button(
-                types.InlineKeyboardButton("Help message", url=await get_start_link("help"))
+                types.InlineKeyboardButton(text="Help message", url=start_link)
             )
         )
         return
 
     await message.reply(
-        (
-            "/gameinfo - Game mode descriptions\n"
-            "/troubleshoot - Resolve common issues\n"
-            "/reqaddword - Request addition of words\n"
-            "/feedback - Send feedback to bot owner\n\n"
-            "You may message [Jono](tg://user?id=463998526) "
-            "in *English / Cantonese* if you have issues with the bot.\n"
-            "Official Group: https://t.me/+T30aTNo-2Xx2kc52\n"
-            "Word Additions Channel (with status updates): @on9wcwa\n"
-            "Source Code: [jonowo/on9wordchainbot](https://github.com/jonowo/on9wordchainbot)\n"
-            "Epic icon designed by [Adri](tg://user?id=303527690)"
-        ),
-        allow_sending_without_reply=True
+        "/gameinfo - Game mode descriptions\n"
+        "/troubleshoot - Resolve common issues\n"
+        "/reqaddword - Request addition of words\n"
+        "/feedback - Send feedback to bot owner\n\n"
+        "You may message [Jono](tg://user?id=463998526) "
+        "in *English / Cantonese* if you have issues with the bot.\n"
+        "Official Group: https://t.me/+T30aTNo-2Xx2kc52\n"
+        "Word Additions Channel (with status updates): @on9wcwa\n"
+        "Source Code: [jonowo/on9wordchainbot](https://github.com/jonowo/on9wordchainbot)\n"
+        "Epic icon designed by [Adri](tg://user?id=303527690)"
     )
 
 
-@dp.message_handler(commands="gameinfo")
+@router.message(Command("gameinfo"))
 @send_private_only_message
 async def cmd_gameinfo(message: types.Message) -> None:
     await message.reply(
-        (
-            "/startclassic - Classic game\n"
-            "Players take turns to send words starting with the last letter of the previous word.\n\n"
-            "Variants:\n"
-            "/starthard - Hard mode game\n"
-            "/startchaos - Chaos game (random turn order)\n"
-            "/startcfl - Chosen first letter game\n"
-            "/startrfl - Random first letter game\n"
-            "/startbl - Banned letters game\n"
-            "/startrl - Required letter game\n\n"
-            "/startelim - Elimination game\n"
-            "Each player's score is their cumulative word length. "
-            "The lowest scoring players are eliminated after each round.\n\n"
-            "/startmelim - Mixed elimination game (donation reward)\n"
-            "Elimination game with different modes. Try at the [official group](https://t.me/+T30aTNo-2Xx2kc52)."
-        ),
-        allow_sending_without_reply=True
+        "/startclassic - Classic game\n"
+        "Players take turns to send words starting with the last letter of the previous word.\n\n"
+        "Variants:\n"
+        "/starthard - Hard mode game\n"
+        "/startchaos - Chaos game (random turn order)\n"
+        "/startcfl - Chosen first letter game\n"
+        "/startrfl - Random first letter game\n"
+        "/startbl - Banned letters game\n"
+        "/startrl - Required letter game\n\n"
+        "/startelim - Elimination game\n"
+        "Each player's score is their cumulative word length. "
+        "The lowest scoring players are eliminated after each round.\n\n"
+        "/startmelim - Mixed elimination game (donation reward)\n"
+        "Elimination game with different modes. Try at the [official group](https://t.me/+T30aTNo-2Xx2kc52)."
     )
 
 
-@dp.message_handler(commands="troubleshoot")
+@router.message(Command("troubleshoot"))
 @send_private_only_message
 async def cmd_troubleshoot(message: types.Message) -> None:
     await message.reply(
@@ -86,24 +83,23 @@ async def cmd_troubleshoot(message: types.Message) -> None:
             "1. There can be at most 20 bots in a group. Check if this limit is reached.\n\n"
             "If you encounter other issues, please contact <a href='tg://user?id=463998526'>my owner</a>."
         ),
-        parse_mode=types.ParseMode.HTML,
-        allow_sending_without_reply=True
+        parse_mode=ParseMode.HTML,
     )
 
 
-@dp.message_handler(commands="ping")
+@router.message(Command("ping"))
 async def cmd_ping(message: types.Message) -> None:
     t = time.time()
-    msg = await message.reply("Pong!", allow_sending_without_reply=True)
+    msg = await message.reply("Pong!")
     await msg.edit_text(f"Pong! `{time.time() - t:.3f}s`")
 
 
-@dp.message_handler(commands="chatid")
+@router.message(Command("chatid"))
 async def cmd_chatid(message: types.Message) -> None:
-    await message.reply(f"`{message.chat.id}`", allow_sending_without_reply=True)
+    await message.reply(f"`{message.chat.id}`")
 
 
-@dp.message_handler(commands="runinfo")
+@router.message(Command("runinfo"))
 async def cmd_runinfo(message: types.Message) -> None:
     build_time_str = (
         "{0.day}/{0.month}/{0.year}".format(GlobalState.build_time)
@@ -113,58 +109,46 @@ async def cmd_runinfo(message: types.Message) -> None:
     )
     uptime = datetime.now().replace(microsecond=0) - GlobalState.build_time
     await message.reply(
-        (
-            f"Build time: `{build_time_str}`\n"
-            f"Uptime: `{uptime.days}.{str(uptime).rsplit(maxsplit=1)[-1]}`\n"
-            f"Words in dictionary: `{Words.count}`\n"
-            f"Total games: `{len(GlobalState.games)}`\n"
-            f"Running games: `{len([g for g in GlobalState.games.values() if g.state == GameState.RUNNING])}`\n"
-            f"Players: `{sum(len(g.players) for g in GlobalState.games.values())}`"
-        ),
-        allow_sending_without_reply=True
+        f"Build time: `{build_time_str}`\n"
+        f"Uptime: `{uptime.days}.{str(uptime).rsplit(maxsplit=1)[-1]}`\n"
+        f"Words in dictionary: `{Words.count}`\n"
+        f"Total games: `{len(GlobalState.games)}`\n"
+        f"Running games: `{len([g for g in GlobalState.games.values() if g.state == GameState.RUNNING])}`\n"
+        f"Players: `{sum(len(g.players) for g in GlobalState.games.values())}`"
     )
 
 
-@dp.message_handler(is_owner=True, commands="playinggroups")
+@router.message(IsOwner(), Command("playinggroups"))
 async def cmd_playinggroups(message: types.Message) -> None:
     if not GlobalState.games:
-        await message.reply("No groups are playing games.", allow_sending_without_reply=True)
+        await message.reply("No groups are playing games.")
         return
 
+    # TODO: return and gather the result instead of doing append
     groups = []
 
     async def append_group(group_id: int) -> None:
         try:
-            group = await bot.get_chat(group_id)
-            url = await group.get_url()
-            # TODO: weakref exception is aiogram bug, wait fix
-        except TypeError as e:
-            if str(e) == "cannot create weak reference to 'NoneType' object":
-                text = "???"
-            else:
-                text = f"(<code>{e.__class__.__name__}: {e}</code>)"
+            group = await message.bot.get_chat(group_id)
         except Exception as e:
-            text = f"(<code>{e.__class__.__name__}: {e}</code>)"
+            text = f"<code>[{e.__class__.__name__}: {e}]</code>"
         else:
-            if url:
-                text = f"<a href='{url}'>{quote_html(group.title)}</a>"
+            if group.username:
+                text = f"<a href='https://t.me/{group.username}'>{html.quote(group.title)}</a>"
             else:
                 text = f"<b>{group.title}</b>"
 
         if group_id not in GlobalState.games:  # In case the game ended during API calls
             return
 
+        game = GlobalState.games[group_id]
         groups.append(
             text + (
                 f" <code>{group_id}</code> "
-                f"{len(GlobalState.games[group_id].players_in_game)}/{len(GlobalState.games[group_id].players)}P "
-                f"{GlobalState.games[group_id].turns}W "
-                f"{GlobalState.games[group_id].time_left}s"
+                f"{len(game.players_in_game)}/{len(game.players)}P "
+                f"{game.turns}W {game.time_left}s"
             )
         )
 
     await asyncio.gather(*[append_group(gid) for gid in GlobalState.games])
-    await message.reply(
-        "\n".join(groups), parse_mode=types.ParseMode.HTML,
-        allow_sending_without_reply=True
-    )
+    await message.reply("\n".join(groups), parse_mode=ParseMode.HTML)

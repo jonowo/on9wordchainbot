@@ -1,5 +1,5 @@
-from .classic import ClassicGame
-from ...constants import GameSettings
+from on9wordchainbot.models.game.classic import ClassicGame
+from on9wordchainbot.constants import GameSettings
 
 
 class HardModeGame(ClassicGame):

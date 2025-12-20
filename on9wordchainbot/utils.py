@@ -1,14 +1,14 @@
 import random
 from functools import wraps
 from string import ascii_lowercase
-from typing import Any, Callable, Optional
+from typing import Any, Awaitable, Callable, Coroutine, Optional, TypeVar
 
 from aiocache import cached
 from aiogram import types
 
-from . import bot, on9bot, pool
-from .constants import ADMIN_GROUP_ID, VIP
-from .words import Words
+from on9wordchainbot.constants import ADMIN_GROUP_ID, VIP
+from on9wordchainbot.resources import bot, on9bot, get_pool
+from on9wordchainbot.words import Words
 
 
 def is_word(s: str) -> bool:
@@ -26,7 +26,7 @@ def filter_words(
     banned_letters: Optional[list[str]] = None,
     exclude_words: Optional[set[str]] = None
 ) -> list[str]:
-    words = Words.dawg.keys(prefix) if prefix else Words.dawg.keys()
+    words: list[str] = Words.dawg.keys(prefix) if prefix else Words.dawg.keys()
     if min_len > 1:
         words = [w for w in words if len(w) >= min_len]
     if required_letter:
@@ -55,6 +55,7 @@ async def send_admin_group(*args: Any, **kwargs: Any) -> types.Message:
 
 @cached(ttl=15)
 async def amt_donated(user_id: int) -> int:
+    pool = get_pool()
     async with pool.acquire() as conn:
         amt = await conn.fetchval("SELECT SUM(amount) FROM donation WHERE user_id = $1;", user_id)
         return amt or 0
@@ -62,7 +63,7 @@ async def amt_donated(user_id: int) -> int:
 
 @cached(ttl=15)
 async def has_star(user_id: int) -> bool:
-    return user_id in VIP or user_id == on9bot.id or await amt_donated(user_id)
+    return user_id in VIP or user_id == on9bot.id or await amt_donated(user_id) > 0
 
 
 def inline_keyboard_from_button(button: types.InlineKeyboardButton) -> types.InlineKeyboardMarkup:
@@ -70,10 +71,10 @@ def inline_keyboard_from_button(button: types.InlineKeyboardButton) -> types.Inl
 
 
 ADD_TO_GROUP_KEYBOARD = inline_keyboard_from_button(
-    types.InlineKeyboardButton("Add to group", url="https://t.me/on9wordchainbot?startgroup=_")
+    types.InlineKeyboardButton(text="Add to group", url="https://t.me/on9wordchainbot?startgroup=_")
 )
 ADD_ON9BOT_TO_GROUP_KEYBOARD = inline_keyboard_from_button(
-    types.InlineKeyboardButton("Add On9Bot to group", url="https://t.me/On9Bot?startgroup=_")
+    types.InlineKeyboardButton(text="Add On9Bot to group", url="https://t.me/On9Bot?startgroup=_")
 )
 
 
@@ -81,7 +82,7 @@ def send_private_only_message(f: Callable[..., Any]) -> Callable[..., Any]:
     @wraps(f)
     async def inner(message: types.Message, *args: Any, **kwargs: Any) -> None:
         if message.chat.id < 0:
-            await message.reply("Please use this command in private.", allow_sending_without_reply=True)
+            await message.reply("Please use this command in private.")
             return
         await f(message, *args, **kwargs)
 
@@ -94,9 +95,22 @@ def send_groups_only_message(f: Callable[..., Any]) -> Callable[..., Any]:
         if message.chat.id > 0:
             await message.reply(
                 "This command can only be used in groups.",
-                allow_sending_without_reply=True, reply_markup=ADD_TO_GROUP_KEYBOARD
+                reply_markup=ADD_TO_GROUP_KEYBOARD
             )
             return
         await f(message, *args, **kwargs)
 
     return inner
+
+
+
+T = TypeVar("T")
+
+
+def awaitable_to_coroutine(awaitable: Awaitable[T]) -> Coroutine[Any, Any, T]:
+    # Convert awaitable like aiogram TelegramMethod to a coroutine
+    # so that it can be used in asyncio.create_task()
+    async def _runner() -> T:
+        return await awaitable
+
+    return _runner()

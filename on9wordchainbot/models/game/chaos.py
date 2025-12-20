@@ -1,10 +1,10 @@
 import random
 from datetime import datetime
 
-from aiogram import types
+from aiogram.enums import ParseMode
 
-from .classic import ClassicGame
-from ...utils import get_random_word
+from on9wordchainbot.models.game.classic import ClassicGame
+from on9wordchainbot.utils import get_random_word
 
 
 class ChaosGame(ClassicGame):
@@ -21,7 +21,7 @@ class ChaosGame(ClassicGame):
                 f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
                 f"Total words: {self.turns}"
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
         # Reset per-turn attributes
@@ -57,7 +57,7 @@ class ChaosGame(ClassicGame):
             self.accepting_answers = False
             await self.send_message(
                 f"{self.players_in_game[0].mention} ran out of time! They have been eliminated.",
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
             del self.players_in_game[0]
 

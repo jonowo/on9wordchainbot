@@ -2,11 +2,12 @@ from datetime import datetime
 from typing import Optional
 
 from aiogram import types
+from aiogram.enums import ParseMode
 
-from .classic import ClassicGame
-from ..player import Player
-from ...constants import GameSettings, GameState
-from ...utils import get_random_word
+from on9wordchainbot.models.game.classic import ClassicGame
+from on9wordchainbot.models.player import Player
+from on9wordchainbot.constants import GameSettings, GameState
+from on9wordchainbot.utils import get_random_word
 
 
 class EliminationGame(ClassicGame):
@@ -100,7 +101,7 @@ class EliminationGame(ClassicGame):
                   f"You have <b>{self.time_limit}s</b> to answer.\n\n"
                   "Leaderboard:\n" + self.get_leaderboard(show_player=self.players_in_game[0])
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
         # Reset per-turn attributes
@@ -134,7 +135,7 @@ class EliminationGame(ClassicGame):
                 "Turn order:\n"
                 + "\n".join(p.mention for p in self.players_in_game)
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
         await self.handle_round_start()
@@ -147,7 +148,7 @@ class EliminationGame(ClassicGame):
             self.accepting_answers = False
             await self.send_message(
                 f"{self.players_in_game[0].mention} ran out of time!",
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
 
         # Regardless of answering in time or running out of time
@@ -174,7 +175,7 @@ class EliminationGame(ClassicGame):
 
         await self.send_message(
             f"Round {self.round} is starting...\n\nLeaderboard:\n" + self.get_leaderboard(),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
     async def handle_round_end(self) -> None:
@@ -193,7 +194,7 @@ class EliminationGame(ClassicGame):
                 + ("is" if len(eliminated) == 1 else "are")
                 + f" eliminated for having the lowest score of {min_score}."
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
         # Update attributes

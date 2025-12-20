@@ -3,13 +3,14 @@ from datetime import datetime
 from string import ascii_lowercase
 
 from aiogram import types
+from aiogram.enums import ParseMode
 
-from .banned_letters import BannedLettersGame
-from .chosen_first_letter import ChosenFirstLetterGame
-from .classic import ClassicGame
-from .elimination import EliminationGame
-from .required_letter import RequiredLetterGame
-from ...utils import check_word_existence, get_random_word
+from on9wordchainbot.models.game.banned_letters import BannedLettersGame
+from on9wordchainbot.models.game.chosen_first_letter import ChosenFirstLetterGame
+from on9wordchainbot.models.game.classic import ClassicGame
+from on9wordchainbot.models.game.elimination import EliminationGame
+from on9wordchainbot.models.game.required_letter import RequiredLetterGame
+from on9wordchainbot.utils import check_word_existence, get_random_word
 
 
 class MixedEliminationGame(EliminationGame):
@@ -55,7 +56,7 @@ class MixedEliminationGame(EliminationGame):
 
         text += f"You have <b>{self.time_limit}s</b> to answer.\n\n"
         text += "Leaderboard:\n" + self.get_leaderboard(show_player=self.players_in_game[0])
-        await self.send_message(text, parse_mode=types.ParseMode.HTML)
+        await self.send_message(text, parse_mode=ParseMode.HTML)
 
         # Reset per-turn attributes
         self.answered = False
@@ -76,25 +77,20 @@ class MixedEliminationGame(EliminationGame):
         if self.game_mode is ChosenFirstLetterGame:
             if not word.startswith(self.current_word[0]):
                 await message.reply(
-                    f"_{word.capitalize()}_ does not start with _{self.current_word[0].upper()}_.",
-                    allow_sending_without_reply=True
+                    f"_{word.capitalize()}_ does not start with _{self.current_word[0].upper()}_."
                 )
                 return
         elif not word.startswith(self.current_word[-1]):
             await message.reply(
-                f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.",
-                allow_sending_without_reply=True
+                f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_."
             )
             return
 
         if word in self.used_words:
-            await message.reply(f"_{word.capitalize()}_ has been used.", allow_sending_without_reply=True)
+            await message.reply(f"_{word.capitalize()}_ has been used.")
             return
         if not check_word_existence(word):
-            await message.reply(
-                f"_{word.capitalize()}_ is not in my list of words.",
-                allow_sending_without_reply=True
-            )
+            await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
             return
         if not await self.additional_answer_checkers(word, message):
             return
@@ -133,7 +129,7 @@ class MixedEliminationGame(EliminationGame):
                 "Turn order:\n"
                 + "\n".join(p.mention for p in self.players_in_game)
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
         round_text = f"Round 1 is starting...\nMode: <b>{self.game_mode.name.capitalize()}</b>"
@@ -142,7 +138,7 @@ class MixedEliminationGame(EliminationGame):
         elif self.game_mode is BannedLettersGame:
             round_text += f"\nBanned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
         round_text += "\n\nLeaderboard:\n" + self.get_leaderboard()
-        await self.send_message(round_text, parse_mode=types.ParseMode.HTML)
+        await self.send_message(round_text, parse_mode=ParseMode.HTML)
 
     def set_game_mode(self) -> None:
         # Random game mode without having the same mode twice in a row
@@ -169,4 +165,4 @@ class MixedEliminationGame(EliminationGame):
         elif self.game_mode is BannedLettersGame:
             round_text += f"\nBanned letters: <i>{', '.join(c.upper() for c in self.banned_letters)}</i>"
         round_text += "\n\nLeaderboard:\n" + self.get_leaderboard()
-        await self.send_message(round_text, parse_mode=types.ParseMode.HTML)
+        await self.send_message(round_text, parse_mode=ParseMode.HTML)

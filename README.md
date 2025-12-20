@@ -10,12 +10,6 @@ On9 Word Chain Bot hosts games of word chain in Telegram groups.
 - [Official Group](https://t.me/+T30aTNo-2Xx2kc52)
 - [Word Additions Channel](https://t.me/on9wcwa)
 
-### Roadmap
-- Make required letter game more reasonable
-- Group leaderboard
-- Switch from Markdown to HTML completely
-- i18n for text strings
-
 ## Installation
 
 ### Requirements
@@ -28,7 +22,7 @@ PostgreSQL 11+ \
 > answers when they reply to the bot.
 
 ### Configuration
-Rename [config_format.json](config_format.json) to `config.json` and edit the following constants:
+Copy `config.json.template` to `config.json`, then edit the following constants in `config.json`:
 
 - `TOKEN`*: A Telegram bot token.
 - `ON9BOT_TOKEN`*: Another Telegram bot token for the virtual player bot.
@@ -51,3 +45,17 @@ Create the required tables in your PostgreSQL database by running [init.sql](ini
 ### Deployment
 Install and update dependencies with `pip install -Ur requirements.txt`. \
 Run `python -m on9wordchainbot`.
+
+### Roadmap
+- Set up webhook?
+- Make required letter game more reasonable
+- Group leaderboard
+- Switch from Markdown to HTML completely
+- i18n for text strings
+
+### Development
+```
+pip install -r requirements-dev.txt
+```
+
+Type checking: `python -m mypy .`

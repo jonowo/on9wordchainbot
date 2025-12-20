@@ -4,9 +4,10 @@ from string import ascii_lowercase
 from typing import Optional
 
 from aiogram import types
+from aiogram.enums import ParseMode
 
-from .classic import ClassicGame
-from ...utils import get_random_word
+from on9wordchainbot.models.game.classic import ClassicGame
+from on9wordchainbot.utils import get_random_word
 
 
 class BannedLettersGame(ClassicGame):
@@ -31,7 +32,7 @@ class BannedLettersGame(ClassicGame):
                 f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
                 f"Total words: {self.turns}"
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
         # Reset per-turn attributes
@@ -55,8 +56,7 @@ class BannedLettersGame(ClassicGame):
         if used_banned_letters:
             await message.reply(
                 f"_{word.capitalize()}_ contains banned letters "
-                f"({', '.join(c.upper() for c in used_banned_letters)}).",
-                allow_sending_without_reply=True
+                f"({', '.join(c.upper() for c in used_banned_letters)})."
             )
             return False
         return True
@@ -94,5 +94,5 @@ class BannedLettersGame(ClassicGame):
                 "Turn order:\n"
                 + "\n".join(p.mention for p in self.players_in_game)
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )

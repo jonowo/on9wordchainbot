@@ -5,12 +5,19 @@ from typing import Any, Optional
 
 from aiocache import cached
 from aiogram import types
-from aiogram.utils.exceptions import BadRequest
+from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.utils.chat_member import ADMINS, MEMBERS
 
-from ..player import Player
-from ... import GlobalState, bot, on9bot, pool
-from ...constants import GameSettings, GameState, OWNER_ID
-from ...utils import ADD_ON9BOT_TO_GROUP_KEYBOARD, check_word_existence, get_random_word, send_admin_group
+from on9wordchainbot.resources import GlobalState, bot, on9bot, get_pool
+from on9wordchainbot.models.player import Player
+from on9wordchainbot.constants import GameSettings, GameState, OWNER_ID
+from on9wordchainbot.utils import (
+    ADD_ON9BOT_TO_GROUP_KEYBOARD,
+    check_word_existence,
+    get_random_word,
+    send_admin_group,
+)
 
 
 class ClassicGame:
@@ -56,14 +63,12 @@ class ClassicGame:
         return any(p.user_id == user_id for p in self.players)
 
     async def send_message(self, *args: Any, **kwargs: Any) -> types.Message:
-        return await bot.send_message(
-            self.group_id, *args, allow_sending_without_reply=True, **kwargs
-        )
+        return await bot.send_message(self.group_id, *args, **kwargs)
 
     @cached(ttl=15)
     async def is_admin(self, user_id: int) -> bool:
         user = await bot.get_chat_member(self.group_id, user_id)
-        return user.is_chat_admin()
+        return isinstance(user, ADMINS)
 
     async def join(self, message: types.Message) -> None:
         async with self.join_lock:
@@ -86,7 +91,7 @@ class ClassicGame:
             await self.send_message(
                 f"{player.name} joined. There {'is' if len(self.players) == 1 else 'are'} now "
                 f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
 
             # Start game when max players reached
@@ -115,7 +120,7 @@ class ClassicGame:
             await self.send_message(
                 f"{player.name} was forced to join. There {'is' if len(self.players) == 1 else 'are'} now "
                 f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
 
             # Start game when max players reached
@@ -139,7 +144,7 @@ class ClassicGame:
             await self.send_message(
                 f"{player.name} fled. There {'is' if len(self.players) == 1 else 'are'} now "
                 f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
 
     async def forceflee(self, message: types.Message) -> None:
@@ -160,7 +165,7 @@ class ClassicGame:
             await self.send_message(
                 f"{player.name} was forced to flee. There {'is' if len(self.players) == 1 else 'are'} now "
                 f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}.",
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
 
     async def addvp(self, message: types.Message) -> None:
@@ -182,10 +187,9 @@ class ClassicGame:
                 return
 
             try:
-                vp = await bot.get_chat_member(self.group_id, on9bot.id)
-                # VP must be chat member
-                assert vp.is_chat_member() or vp.is_chat_admin()
-            except (BadRequest, AssertionError):
+                vp_member = await bot.get_chat_member(self.group_id, on9bot.id)
+                assert isinstance(vp_member, MEMBERS)  # VP must be chat member
+            except (TelegramBadRequest, AssertionError):
                 await self.send_message(
                     f"Add [On9Bot](tg://user?id={on9bot.id}) here to play as a virtual player.",
                     reply_markup=ADD_ON9BOT_TO_GROUP_KEYBOARD
@@ -195,13 +199,14 @@ class ClassicGame:
             vp = await Player.vp()
             self.players.append(vp)
 
-            await on9bot.send_message(self.group_id, "/join@" + (await bot.me).username)
+            bot_user = await bot.me()
+            await on9bot.send_message(self.group_id, "/join@" + bot_user.username)
             await self.send_message(
                 (
                     f"{vp.name} joined. There {'is' if len(self.players) == 1 else 'are'} now "
                     f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}."
                 ),
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
 
             # Start game when max players reached
@@ -233,13 +238,14 @@ class ClassicGame:
             else:
                 return
 
-            await on9bot.send_message(self.group_id, "/flee@" + (await bot.me).username)
+            bot_user = await bot.me()
+            await on9bot.send_message(self.group_id, "/flee@" + bot_user.username)
             await self.send_message(
                 (
                     f"{vp.name} fled. There {'is' if len(self.players) == 1 else 'are'} now "
                     f"{len(self.players)} player{'' if len(self.players) == 1 else 's'}."
                 ),
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
 
     async def extend(self, message: types.Message) -> None:
@@ -310,7 +316,7 @@ class ClassicGame:
                 f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
                 f"Total words: {self.turns}"
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
         # Reset per-turn attributes
@@ -352,32 +358,27 @@ class ClassicGame:
 
     async def handle_answer(self, message: types.Message) -> None:
         # Prevent circular imports
-        from .elimination import EliminationGame
+        from on9wordchainbot.models.game.elimination import EliminationGame
 
         word = message.text.lower()
 
         # Check if answer is invalid
         if not word.startswith(self.current_word[-1]):
             await message.reply(
-                f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_.",
-                allow_sending_without_reply=True
+                f"_{word.capitalize()}_ does not start with _{self.current_word[-1].upper()}_."
             )
             return
         # No minimum letters limit for elimination game modes
         if not isinstance(self, EliminationGame) and len(word) < self.min_letters_limit:
             await message.reply(
-                f"_{word.capitalize()}_ has less than {self.min_letters_limit} letters.",
-                allow_sending_without_reply=True
+                f"_{word.capitalize()}_ has less than {self.min_letters_limit} letters."
             )
             return
         if word in self.used_words:
-            await message.reply(f"_{word.capitalize()}_ has been used.", allow_sending_without_reply=True)
+            await message.reply(f"_{word.capitalize()}_ has been used.")
             return
         if not check_word_existence(word):
-            await message.reply(
-                f"_{word.capitalize()}_ is not in my list of words.",
-                allow_sending_without_reply=True
-            )
+            await message.reply(f"_{word.capitalize()}_ is not in my list of words.")
             return
         if not await self.additional_answer_checkers(word, message):
             return
@@ -387,7 +388,7 @@ class ClassicGame:
 
     def post_turn_processing(self, word: str) -> None:
         # Prevent circular imports
-        from .chosen_first_letter import ChosenFirstLetterGame
+        from on9wordchainbot.models.game.chosen_first_letter import ChosenFirstLetterGame
 
         # Update attributes
         self.used_words.add(word)
@@ -442,7 +443,7 @@ class ClassicGame:
                 "Turn order:\n"
                 + "\n".join(p.mention for p in self.players_in_game)
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
     async def running_phase_tick(self) -> bool:
@@ -461,7 +462,7 @@ class ClassicGame:
             self.accepting_answers = False
             await self.send_message(
                 f"{self.players_in_game[0].mention} ran out of time! They have been eliminated.",
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
             del self.players_in_game[0]
 
@@ -485,11 +486,12 @@ class ClassicGame:
             longest_word_sender_name = [p for p in self.players if p.user_id == self.longest_word_sender_id][0].name
             text += f"Longest word: <i>{self.longest_word.capitalize()}</i> from {longest_word_sender_name}\n"
         text += f"Game length: <code>{game_len_str}</code>"
-        await self.send_message(text, parse_mode=types.ParseMode.HTML)
+        await self.send_message(text, parse_mode=ParseMode.HTML)
 
         GlobalState.games.pop(self.group_id, None)
 
     async def update_db(self) -> None:
+        pool = get_pool()
         async with pool.acquire() as conn:
             # Insert game instance
             await conn.execute(
@@ -513,6 +515,7 @@ class ClassicGame:
             asyncio.create_task(self.update_db_player(game_id, player))
 
     async def update_db_player(self, game_id: int, player: Player) -> None:
+        pool = get_pool()
         async with pool.acquire() as conn:
             player_exists = bool(await conn.fetchval("SELECT id FROM player WHERE user_id = $1;", player.user_id))
             if player_exists:  # Update player in db

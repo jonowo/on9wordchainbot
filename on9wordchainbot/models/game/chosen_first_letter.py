@@ -2,9 +2,9 @@ import random
 from datetime import datetime
 from string import ascii_lowercase
 
-from aiogram import types
+from aiogram.enums import ParseMode
 
-from .classic import ClassicGame
+from on9wordchainbot.models.game.classic import ClassicGame
 
 
 class ChosenFirstLetterGame(ClassicGame):
@@ -23,5 +23,5 @@ class ChosenFirstLetterGame(ClassicGame):
                 "Turn order:\n"
                 + "\n".join(p.mention for p in self.players_in_game)
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )

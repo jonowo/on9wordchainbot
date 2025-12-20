@@ -4,9 +4,10 @@ from string import ascii_lowercase
 from typing import Optional
 
 from aiogram import types
+from aiogram.enums import ParseMode
 
-from .classic import ClassicGame
-from ...utils import get_random_word
+from on9wordchainbot.models.game.classic import ClassicGame
+from on9wordchainbot.utils import get_random_word
 
 
 class RequiredLetterGame(ClassicGame):
@@ -32,7 +33,7 @@ class RequiredLetterGame(ClassicGame):
                 f"Players remaining: {len(self.players_in_game)}/{len(self.players)}\n"
                 f"Total words: {self.turns}"
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
         # Reset per-turn attributes
@@ -54,8 +55,7 @@ class RequiredLetterGame(ClassicGame):
     async def additional_answer_checkers(self, word: str, message: types.Message) -> bool:
         if self.required_letter not in word:
             await message.reply(
-                f"_{word.capitalize()}_ does not include _{self.required_letter.upper()}_.",
-                allow_sending_without_reply=True
+                f"_{word.capitalize()}_ does not include _{self.required_letter.upper()}_."
             )
             return False
         return True
@@ -82,5 +82,5 @@ class RequiredLetterGame(ClassicGame):
                 "Turn order:\n"
                 + "\n".join(p.mention for p in self.players_in_game)
             ),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )

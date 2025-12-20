@@ -1,10 +1,10 @@
 import random
 from datetime import datetime
 
-from aiogram import types
+from aiogram.enums import ParseMode
 
-from .classic import ClassicGame
-from ...utils import get_random_word
+from on9wordchainbot.models.game.classic import ClassicGame
+from on9wordchainbot.utils import get_random_word
 
 
 class RandomFirstLetterGame(ClassicGame):
@@ -27,7 +27,7 @@ class RandomFirstLetterGame(ClassicGame):
             f"The first word is <i>{self.current_word.capitalize()}</i>.\n\n"
             "Turn order:\n"
             + "\n".join(p.mention for p in self.players_in_game),
-            parse_mode=types.ParseMode.HTML
+            parse_mode=ParseMode.HTML
         )
 
         self.change_first_letter()

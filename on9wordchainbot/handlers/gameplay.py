@@ -1,15 +1,17 @@
 import asyncio
 import re
-from re import Match
 from typing import Type
 
-from aiogram import types
-from aiogram.dispatcher.filters import RegexpCommandsFilter
+from aiogram import Router, types
+from aiogram.filters import Command, CommandObject
 
-from .. import GlobalState, dp, on9bot
-from ..constants import GameSettings, GameState, VIP, VIP_GROUP
-from ..models import ClassicGame, EliminationGame, GAME_MODES, MixedEliminationGame
-from ..utils import amt_donated, send_groups_only_message
+from on9wordchainbot.constants import GameSettings, GameState, VIP, VIP_GROUP
+from on9wordchainbot.filters import HasGameInstance, IsAdmin, IsOwner
+from on9wordchainbot.models import ClassicGame, EliminationGame, GAME_MODES, MixedEliminationGame
+from on9wordchainbot.resources import GlobalState, on9bot
+from on9wordchainbot.utils import amt_donated, send_groups_only_message
+
+router = Router(name=__name__)
 
 
 @send_groups_only_message
@@ -23,22 +25,16 @@ async def start_game(message: types.Message, game_type: Type[ClassicGame]) -> No
     if GlobalState.maint_mode:
         # Only stop people from starting games, not joining
         await message.reply(
-            (
-                "Maintenance mode is on. Games are temporarily disabled.\n"
-                "This is likely due to a pending bot update."
-            ),
-            allow_sending_without_reply=True
+            "Maintenance mode is on. Games are temporarily disabled.\n"
+            "This is likely due to a pending bot update."
         )
         return
 
-    await message.chat.update_chat()
-    if message.chat.slow_mode_delay:
+    chat = await message.bot.get_chat(message.chat.id)
+    if chat.slow_mode_delay:
         await message.reply(
-            (
-                "Slow mode is enabled in this group, so the bot cannot function properly.\n"
-                "If you are a group admin, please disable slow mode to start games."
-            ),
-            allow_sending_without_reply=True
+            "Slow mode is enabled in this group, so the bot cannot function properly.\n"
+            "If you are a group admin, please disable slow mode to start games."
         )
         return
 
@@ -47,11 +43,8 @@ async def start_game(message: types.Message, game_type: Type[ClassicGame]) -> No
         and message.from_user.id not in VIP and await amt_donated(message.from_user.id) < 30
     ):
         await message.reply(
-            (
-                "This game mode is a donation reward.\n"
-                "You can try this game mode at the [official group](https://t.me/+T30aTNo-2Xx2kc52)."
-            ),
-            allow_sending_without_reply=True
+            "This game mode is a donation reward.\n"
+            "You can try this game mode at the [official group](https://t.me/+T30aTNo-2Xx2kc52)."
         )
         return
 
@@ -64,20 +57,20 @@ async def start_game(message: types.Message, game_type: Type[ClassicGame]) -> No
             asyncio.create_task(game.main_loop(message))
 
 
-@dp.message_handler(RegexpCommandsFilter([r"^/(start[a-z]+)"]))
-async def cmd_startgame(message: types.Message, regexp_command: Match) -> None:
-    command = regexp_command.groups()[0].lower()
-    if command == "startgame":
+@router.message(Command(re.compile(r"^(start[a-z]+)$")))
+async def cmd_startgame(message: types.Message, command: CommandObject) -> None:
+    command_name = command.command.lower()
+    if command_name == "startgame":
         await start_game(message, ClassicGame)
         return
 
     for mode in GAME_MODES:
-        if mode.command == command:
+        if mode.command == command_name:
             await start_game(message, mode)
             return
 
 
-@dp.message_handler(commands="join")
+@router.message(Command("join"))
 @send_groups_only_message
 async def cmd_join(message: types.Message) -> None:
     group_id = message.chat.id
@@ -85,7 +78,7 @@ async def cmd_join(message: types.Message) -> None:
         await GlobalState.games[group_id].join(message)
 
 
-@dp.message_handler(is_owner=True, game_running=True, commands="forcejoin")
+@router.message(Command("forcejoin"), IsOwner(), HasGameInstance())
 async def cmd_forcejoin(message: types.Message) -> None:
     group_id = message.chat.id
     rmsg = message.reply_to_message
@@ -96,36 +89,36 @@ async def cmd_forcejoin(message: types.Message) -> None:
     await GlobalState.games[group_id].forcejoin(message)
 
 
-@dp.message_handler(game_running=True, commands="extend")
+@router.message(Command("extend"), HasGameInstance())
 async def cmd_extend(message: types.Message) -> None:
     await GlobalState.games[message.chat.id].extend(message)
 
 
-@dp.message_handler(is_admin=True, game_running=True, commands="forcestart")
+@router.message(Command("forcestart"), IsAdmin(), HasGameInstance())
 async def cmd_forcestart(message: types.Message) -> None:
     group_id = message.chat.id
     if GlobalState.games[group_id].state == GameState.JOINING:
         GlobalState.games[group_id].time_left = -99999
 
 
-@dp.message_handler(game_running=True, commands="flee")
+@router.message(Command("flee"), HasGameInstance())
 async def cmd_flee(message: types.Message) -> None:
     await GlobalState.games[message.chat.id].flee(message)
 
 
-@dp.message_handler(is_owner=True, game_running=True, commands="forceflee")
+@router.message(Command("forceflee"), IsOwner(), HasGameInstance())
 async def cmd_forceflee(message: types.Message) -> None:
     await GlobalState.games[message.chat.id].forceflee(message)
 
 
-@dp.message_handler(is_owner=True, commands=["killgame", "killgaym"])
-async def cmd_killgame(message: types.Message) -> None:
+@router.message(Command("killgame", "killgaym"), IsOwner())
+async def cmd_killgame(message: types.Message, command: CommandObject) -> None:
     try:
-        group_id = int(message.get_args() or message.chat.id)
+        group_id = int(command.args or message.chat.id)
         assert group_id < 0, "smh"
         assert group_id in GlobalState.games, "no game running"
     except (ValueError, AssertionError) as e:
-        await message.reply(f"`{e.__class__.__name__}: {e}`", allow_sending_without_reply=True)
+        await message.reply(f"`{e.__class__.__name__}: {e}`")
         return
 
     GlobalState.games[group_id].state = GameState.KILLGAME
@@ -134,37 +127,35 @@ async def cmd_killgame(message: types.Message) -> None:
     # If game is still not terminated
     if group_id in GlobalState.games:
         del GlobalState.games[group_id]
-        await message.reply("Game ended forcibly.", allow_sending_without_reply=True)
+        await message.reply("Game ended forcibly.")
 
 
-@dp.message_handler(is_owner=True, game_running=True, commands="forceskip")
+@router.message(Command("forceskip"), IsOwner(), HasGameInstance())
 async def cmd_forceskip(message: types.Message) -> None:
     group_id = message.chat.id
     if GlobalState.games[group_id].state == GameState.RUNNING and not GlobalState.games[group_id].answered:
         GlobalState.games[group_id].time_left = 0
 
 
-@dp.message_handler(game_running=True, commands="addvp")
+@router.message(Command("addvp"), HasGameInstance())
 async def cmd_addvp(message: types.Message) -> None:
     group_id = message.chat.id
+    on9bot_user = await on9bot.me()
     if isinstance(GlobalState.games[group_id], EliminationGame):
         await message.reply(
-            (
-                f"Sorry, [{(await on9bot.me).full_name}](https://t.me/{(await on9bot.me).username}) "
-                "can't play elimination games."
-            ),
-            allow_sending_without_reply=True
+            f"Sorry, [{on9bot_user.full_name}](https://t.me/{on9bot_user.username}) "
+            "can't play elimination games."
         )
         return
     await GlobalState.games[group_id].addvp(message)
 
 
-@dp.message_handler(game_running=True, commands="remvp")
+@router.message(Command("remvp"), HasGameInstance())
 async def cmd_remvp(message: types.Message) -> None:
     await GlobalState.games[message.chat.id].remvp(message)
 
 
-@dp.message_handler(is_owner=True, game_running=True, commands="incmaxp")
+@router.message(IsOwner(), HasGameInstance(), Command("incmaxp"))
 async def cmd_incmaxp(message: types.Message) -> None:
     # Thought this could be useful when I implemented this
     # It is not
@@ -181,22 +172,21 @@ async def cmd_incmaxp(message: types.Message) -> None:
     else:
         GlobalState.games[group_id].max_players = GameSettings.INCREASED_MAX_PLAYERS
     await message.reply(
-        f"This game can now accommodate {GlobalState.games[group_id].max_players} players.",
-        allow_sending_without_reply=True
+        f"This game can now accommodate {GlobalState.games[group_id].max_players} players."
     )
 
 
-@dp.message_handler(game_running=True)
-@dp.edited_message_handler(game_running=True)
+@router.message(HasGameInstance())
+@router.edited_message(HasGameInstance())
 async def answer_handler(message: types.Message) -> None:
-    if not re.match(r"^[a-zA-Z]{1,100}$", message.text):
+    if message.text is None or not re.match(r"^[a-zA-Z]{1,100}$", message.text):
         return
 
-    group_id = message.chat.id
+    game = GlobalState.games[message.chat.id]
     if (
-        GlobalState.games[group_id].players_in_game
-        and message.from_user.id == GlobalState.games[group_id].players_in_game[0].user_id
-        and not GlobalState.games[group_id].answered
-        and GlobalState.games[group_id].accepting_answers
+        game.players_in_game
+        and message.from_user.id == game.players_in_game[0].user_id
+        and not game.answered
+        and game.accepting_answers
     ):
-        await GlobalState.games[group_id].handle_answer(message)
+        await game.handle_answer(message)

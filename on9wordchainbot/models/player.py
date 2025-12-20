@@ -1,9 +1,8 @@
-from aiogram import types
-from aiogram.utils.markdown import quote_html
+from aiogram import types, html
 
-from .. import on9bot
-from ..constants import STAR
-from ..utils import has_star
+from on9wordchainbot.resources import on9bot
+from on9wordchainbot.constants import STAR
+from on9wordchainbot.utils import has_star
 
 
 class Player:
@@ -29,13 +28,13 @@ class Player:
     @property
     def name(self) -> str:
         if self._username:
-            return f"<a href='https://t.me/{self._username}'>{quote_html(self._name)}</a>"
+            return f"<a href='https://t.me/{self._username}'>{html.quote(self._name)}</a>"
         else:
-            return f"<b>{quote_html(self._name)}</b>"
+            return f"<b>{html.quote(self._name)}</b>"
 
     @property
     def mention(self) -> str:
-        return f"<a href='tg://user?id={self.user_id}'>{quote_html(self._name)}</a>"
+        return f"<a href='tg://user?id={self.user_id}'>{html.quote(self._name)}</a>"
 
     @classmethod
     async def create(cls, user: types.User) -> "Player":
@@ -46,6 +45,7 @@ class Player:
 
     @classmethod
     async def vp(cls) -> "Player":
-        vp = Player(await on9bot.me)
+        on9bot_user = await on9bot.me()
+        vp = Player(on9bot_user)
         vp._name += " " + STAR
         return vp

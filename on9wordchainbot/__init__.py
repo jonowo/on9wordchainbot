@@ -1,60 +1,45 @@
-import asyncio
 import logging
-from datetime import datetime
-from typing import TYPE_CHECKING
 
-import aiohttp
-import asyncpg
-from aiogram import Bot, Dispatcher, types
+from aiogram import Dispatcher
+from periodic import Periodic
 
-from .constants import DB_URI, ON9BOT_TOKEN, TOKEN
-from .filters import filters
-
-if TYPE_CHECKING:
-    from .models import ClassicGame
+from on9wordchainbot.resources import init_resources, close_resources
+from on9wordchainbot.utils import send_admin_group
+from on9wordchainbot.words import Words
 
 try:
-    import coloredlogs  # pip install coloredlogs
+    import coloredlogs
 except ImportError:
-    logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+    logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.WARNING)
+    logging.warning("coloredlogs not available; defaulting to logging. To install, use `pip install coloredlogs`.")
 else:
-    coloredlogs.install(fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+    coloredlogs.install(fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
 try:
-    import uvloop  # pip install uvloop
+    import uvloop
 except ImportError:
-    logger.info(r"uvloop unavailable ¯\_(ツ)_/¯")
+    logger.warning("uvloop unavailable. To install, use `pip install uvloop`.")
 else:
     uvloop.install()
 
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-bot = Bot(TOKEN, parse_mode=types.ParseMode.MARKDOWN, disable_web_page_preview=True)
-on9bot = Bot(ON9BOT_TOKEN)
-dp = Dispatcher(bot)
-session = aiohttp.ClientSession()
-pool: asyncpg.pool.Pool
+# ----- Initialize dispatcher -----
+from on9wordchainbot.handlers import routers
+from on9wordchainbot.handlers.errors import error_handler
+
+dp = Dispatcher()
+dp.include_routers(*routers)
+dp.error.register(error_handler)
 
 
-class GlobalState:
-    build_time = datetime.now().replace(microsecond=0)
-    maint_mode = False
+@dp.startup()
+async def startup():
+    await init_resources()
+    await Periodic(60 * 60, Words.update).start(delay=0)  # Run Words.update every hour
+    await send_admin_group("Bot starting.")
 
-    games: dict[int, "ClassicGame"] = {}  # Group id mapped to game instance
-    games_lock: asyncio.Lock = asyncio.Lock()
-
-
-async def init() -> None:
-    global pool
-    logger.info("Connecting to database")
-    pool = await asyncpg.create_pool(DB_URI, loop=loop)
-
-
-loop.run_until_complete(init())
-
-for f in filters:  # Need to bind filters before adding handlers
-    dp.filters_factory.bind(f)
-
-from .handlers import *
+@dp.shutdown()
+async def shutdown():
+    await close_resources()
+    await send_admin_group("Bot stopping.")

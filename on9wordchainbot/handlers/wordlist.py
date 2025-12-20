@@ -1,57 +1,57 @@
 import asyncio
 import time
 
-from aiogram import types
+from aiogram import Router, types
+from aiogram.enums import ParseMode
+from aiogram.filters import Command, CommandObject
 
-from .. import bot, dp, pool
-from ..constants import WORD_ADDITION_CHANNEL_ID
-from ..utils import check_word_existence, has_star, is_word, send_admin_group
-from ..words import Words
+from on9wordchainbot.constants import STAR, WORD_ADDITION_CHANNEL_ID
+from on9wordchainbot.filters import IsOwner
+from on9wordchainbot.resources import bot, get_pool
+from on9wordchainbot.utils import awaitable_to_coroutine, check_word_existence, has_star, is_word, send_admin_group
+from on9wordchainbot.words import Words
+
+router = Router(name=__name__)
 
 
-@dp.message_handler(commands=["exist", "exists"])
+@router.message(Command("exist", "exists"))
 async def cmd_exists(message: types.Message) -> None:
     word = message.text.partition(" ")[2].lower()
     if not word or not is_word(word):  # No proper argument given
         rmsg = message.reply_to_message
         if not rmsg or not rmsg.text or not is_word(rmsg.text.lower()):
             await message.reply(
-                (
-                    "Function: Check if a word is in my dictionary. "
-                    "Use /reqaddword if you want to request addition of new words.\n"
-                    "Usage: `/exists word`"
-                ),
-                allow_sending_without_reply=True
+                "Function: Check if a word is in my dictionary. "
+                "Use /reqaddword if you want to request addition of new words.\n"
+                "Usage: `/exists word`"
             )
             return
         word = rmsg.text.lower()
 
     await message.reply(
-        f"_{word.capitalize()}_ is *{'' if check_word_existence(word) else 'not '}in* my dictionary.",
-        allow_sending_without_reply=True
+        f"_{word.capitalize()}_ is *{'' if check_word_existence(word) else 'not '}in* my dictionary."
     )
 
 
-@dp.message_handler(commands=["reqaddword", "reqaddwords"])
-async def cmd_reqaddword(message: types.Message) -> None:
+@router.message(Command("reqaddword", "reqaddwords"))
+async def cmd_reqaddword(message: types.Message, command: CommandObject) -> None:
     if message.forward_from:
         return
 
-    words_to_add = [w for w in set(message.get_args().lower().split()) if is_word(w)]
-    if not words_to_add:
+    args = command.args
+    if args and (words_to_add := [w for w in set(args.lower().split()) if is_word(w)]):
+        pass  # ok
+    else:
         await message.reply(
-            (
-                "Function: Request new words. Check @on9wcwa for word list updates.\n"
-                "Before requesting a new word, please check that:\n"
-                "- It appears in a credible English dictionary "
-                "(\u2714\ufe0f Merriam-Webster \u274c Urban Dictionary)\n"
-                "- It is not a [proper noun](https://simple.wikipedia.org/wiki/Proper_noun) "
-                "(\u274c names)\n"
-                "  (existing proper nouns in the word list and nationalities are exempt)\n"
-                "Invalid words will delay the processing of submissions.\n"
-                "Usage: `/reqaddword word1 word2 ...`"
-            ),
-            allow_sending_without_reply=True
+            "Function: Request new words. Check @on9wcwa for word list updates.\n"
+            "Before requesting a new word, please check that:\n"
+            "- It appears in a credible English dictionary "
+            "(\u2714\ufe0f Merriam-Webster \u274c Urban Dictionary)\n"
+            "- It is not a [proper noun](https://simple.wikipedia.org/wiki/Proper_noun) "
+            "(\u274c names)\n"
+            "  (existing proper nouns in the word list and nationalities are exempt)\n"
+            "Invalid words will delay the processing of submissions.\n"
+            "Usage: `/reqaddword word1 word2 ...`"
         )
         return
 
@@ -63,6 +63,7 @@ async def cmd_reqaddword(message: types.Message) -> None:
             existing.append(f"_{w.capitalize()}_")
             words_to_add.remove(w)
 
+    pool = get_pool()
     async with pool.acquire() as conn:
         rej = await conn.fetch("SELECT word, reason FROM wordlist WHERE NOT accepted;")
     for word, reason in rej:
@@ -78,17 +79,20 @@ async def cmd_reqaddword(message: types.Message) -> None:
     text = ""
     if words_to_add:
         text += f"Submitted {', '.join([f'_{w.capitalize()}_' for w in words_to_add])} for approval.\n"
+
+        name = message.from_user.full_name
+        if await has_star(message.from_user.id):
+            name += f" {STAR}"
+
         asyncio.create_task(
             send_admin_group(
-                message.from_user.get_mention(
-                    name=message.from_user.full_name
-                         + (" \u2b50\ufe0f" if await has_star(message.from_user.id) else ""),
-                    as_html=True
+                message.from_user.mention_html(
+                    name=name
                 )
                 + " is requesting the addition of "
                 + ", ".join([f"<i>{w.capitalize()}</i>" for w in words_to_add])
                 + " to the word list. #reqaddword",
-                parse_mode=types.ParseMode.HTML
+                parse_mode=ParseMode.HTML
             )
         )
     if existing:
@@ -97,14 +101,16 @@ async def cmd_reqaddword(message: types.Message) -> None:
         text += f"{', '.join(rejected)} {'was' if len(rejected) == 1 else 'were'} rejected.\n"
     for word, reason in rejected_with_reason:
         text += f"{word} was rejected. Reason: {reason}.\n"
-    await message.reply(text, allow_sending_without_reply=True)
+    await message.reply(text)
 
 
-@dp.message_handler(is_owner=True, commands=["addword", "addwords"])
-async def cmd_addwords(message: types.Message) -> None:
-    words_to_add = [w for w in set(message.get_args().lower().split()) if is_word(w)]
-    if not words_to_add:
-        await message.reply("where words", allow_sending_without_reply=True)
+@router.message(IsOwner(), Command("addword", "addwords"))
+async def cmd_addwords(message: types.Message, command: CommandObject) -> None:
+    args = command.args
+    if args and (words_to_add := [w for w in set(args.lower().split()) if is_word(w)]):
+        pass  # ok
+    else:
+        await message.reply("where words")
         return
 
     existing = []
@@ -115,6 +121,7 @@ async def cmd_addwords(message: types.Message) -> None:
             existing.append(f"_{w.capitalize()}_")
             words_to_add.remove(w)
 
+    pool = get_pool()
     async with pool.acquire() as conn:
         rej = await conn.fetch("SELECT word, reason FROM wordlist WHERE NOT accepted;")
     for word, reason in rej:
@@ -138,7 +145,7 @@ async def cmd_addwords(message: types.Message) -> None:
         text += f"{', '.join(rejected)} {'was' if len(rejected) == 1 else 'were'} rejected.\n"
     for word, reason in rejected_with_reason:
         text += f"{word} was rejected. Reason: {reason}.\n"
-    msg = await message.reply(text, allow_sending_without_reply=True)
+    msg = await message.reply(text)
 
     if not words_to_add:
         return
@@ -146,7 +153,7 @@ async def cmd_addwords(message: types.Message) -> None:
     t = time.time()
     await Words.update()
     asyncio.create_task(
-        msg.edit_text(msg.md_text + f"\n\nWord list updated. Time taken: `{time.time() - t:.3f}s`")
+        awaitable_to_coroutine(msg.edit_text(msg.md_text + f"\n\nWord list updated. Time taken: `{time.time() - t:.3f}s`"))
     )
     asyncio.create_task(
         bot.send_message(
@@ -157,14 +164,18 @@ async def cmd_addwords(message: types.Message) -> None:
     )
 
 
-@dp.message_handler(is_owner=True, commands="rejword")
-async def cmd_rejword(message: types.Message) -> None:
-    arg = message.get_args()
-    word, _, reason = arg.partition(" ")
-    if not word:
+@router.message(IsOwner(), Command("rejword"))
+async def cmd_rejword(message: types.Message, command: CommandObject) -> None:
+    args = command.args
+    if not args:
         return
 
+    word, _, reason = args.partition(" ")
+    if not word:
+        return
     word = word.lower()
+
+    pool = get_pool()
     async with pool.acquire() as conn:
         r = await conn.fetchrow("SELECT accepted, reason FROM wordlist WHERE word = $1;", word)
         if r is None:
@@ -176,13 +187,10 @@ async def cmd_rejword(message: types.Message) -> None:
 
     word = word.capitalize()
     if r is None:
-        await message.reply(f"_{word}_ rejected.", allow_sending_without_reply=True)
+        await message.reply(f"_{word}_ rejected.")
     elif r["accepted"]:
-        await message.reply(f"_{word}_ was accepted.", allow_sending_without_reply=True)
+        await message.reply(f"_{word}_ was accepted.")
     elif not r["reason"]:
-        await message.reply(f"_{word}_ was already rejected.", allow_sending_without_reply=True)
+        await message.reply(f"_{word}_ was already rejected.")
     else:
-        await message.reply(
-            f"_{word}_ was already rejected. Reason: {r['reason']}.",
-            allow_sending_without_reply=True
-        )
+        await message.reply(f"_{word}_ was already rejected. Reason: {r['reason']}.")

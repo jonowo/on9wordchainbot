@@ -1,12 +1,12 @@
-from .banned_letters import BannedLettersGame
-from .chaos import ChaosGame
-from .chosen_first_letter import ChosenFirstLetterGame
-from .classic import ClassicGame
-from .elimination import EliminationGame
-from .hard_mode import HardModeGame
-from .mixed_elimination import MixedEliminationGame
-from .random_first_letter import RandomFirstLetterGame
-from .required_letter import RequiredLetterGame
+from on9wordchainbot.models.game.banned_letters import BannedLettersGame
+from on9wordchainbot.models.game.chaos import ChaosGame
+from on9wordchainbot.models.game.chosen_first_letter import ChosenFirstLetterGame
+from on9wordchainbot.models.game.classic import ClassicGame
+from on9wordchainbot.models.game.elimination import EliminationGame
+from on9wordchainbot.models.game.hard_mode import HardModeGame
+from on9wordchainbot.models.game.mixed_elimination import MixedEliminationGame
+from on9wordchainbot.models.game.random_first_letter import RandomFirstLetterGame
+from on9wordchainbot.models.game.required_letter import RequiredLetterGame
 
 GAME_MODES = [
     ClassicGame,
