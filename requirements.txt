@@ -1,7 +1,7 @@
 aiocache==0.12.3
 aiofiles==25.1.0
 aiogram==3.23.0
-aiohttp[speedups]==3.13.2
+aiohttp[speedups]==3.13.4
 asyncio-periodic==2019.2
 asyncpg==0.31.0
 matplotlib==3.10.8
