@@ -57,7 +57,7 @@ async def error_handler(event: types.ErrorEvent) -> None:
         #     return
 
         if isinstance(error, TelegramMigrateToChat):
-            migrate_chat(update.message.chat.id, error.migrate_to_chat_id)
+            await migrate_chat(update.message.chat.id, error.migrate_to_chat_id)
             return
 
         send_admin_msg = await send_admin_group(
